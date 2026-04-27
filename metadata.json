@@ -1,0 +1,11 @@
+{
+  "name": "NovaMB - Pro Multi-band Compressor",
+  "description": "A high-performance multi-band dynamic processor with external sidechain, real-time spectral analysis, and AI-assisted crossover selection.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "audio_processing",
+    "data_visualization"
+  ]
+}

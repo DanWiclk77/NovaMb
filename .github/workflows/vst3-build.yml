@@ -1,0 +1,32 @@
+name: VST3 Build Windows
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build_vst3:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Set up CMake
+      uses: jwlawrence/cmake-action@master
+
+    - name: Clone JUCE
+      run: git clone --depth 1 https://github.com/juce-framework/JUCE.git
+
+    - name: Configure CMake
+      run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+    - name: Build VST3
+      run: cmake --build build --config Release --target NovaMB_VST3
+
+    - name: Upload VST3 Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: NovaMB-VST3-Windows
+        path: build/NovaMB_artefacts/Release/VST3/NovaMB.vst3
