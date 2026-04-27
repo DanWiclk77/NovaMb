@@ -23,7 +23,9 @@ void CompressorBand::updateParameters(const BandParameters& params) {
     compressor.setAttack(params.attack);
     compressor.setRelease(params.release);
     
-    gain.setGainDecibels(params.makeUpGain);
+    // Explicit float math function for decibel to gain conversion
+    const float gainAmt = std::pow(10.0f, params.makeUpGain * 0.05f); 
+    gain.setGainLinear(gainAmt);
 }
 
 void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context, const juce::AudioBuffer<float>& sidechainBuffer) {

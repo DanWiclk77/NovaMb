@@ -25,7 +25,7 @@ juce_add_plugin(NovaMB
 target_sources(NovaMB PRIVATE
     Source/MultibandEngine.h
     Source/MultibandEngine.cpp
-    # Agrega aquí tus archivos PluginProcessor y PluginEditor generados por Projucer o creados manualmente
+    Source/PluginProcessor.h
 )
 
 target_compile_definitions(NovaMB PUBLIC

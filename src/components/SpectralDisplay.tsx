@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { motion } from 'motion/react';
 import { Band } from '../types';
+import { audioEngine } from '../services/audioEngine';
 
 interface SpectralDisplayProps {
   bands: Band[];
