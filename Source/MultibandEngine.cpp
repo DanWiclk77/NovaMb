@@ -28,43 +28,44 @@ void CompressorBand::updateParameters(const BandParameters& params) {
     gain.setGainLinear(gainAmt);
 }
 
-void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context, const juce::AudioBuffer<float>& sidechainBuffer, bool useSidechain) {
-    if (parameters.bypassed) return;
+void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context, const juce::AudioBuffer<float>& sidechainBuffer) {
+    if (parameters.bypassed || !parameters.active) return;
 
     // 1. Filter band
     loPass.process(context);
     hiPass.process(context);
     
-    // 2. Compress
+    // 2. Calculate average level
     float before = 0.0f;
-    for (size_t ch = 0; ch < context.getInputBlock().getNumChannels(); ++ch)
+    const auto& inputBlock = context.getInputBlock();
+    for (size_t ch = 0; ch < inputBlock.getNumChannels(); ++ch)
     {
-        auto* chPtr = context.getInputBlock().getChannelPointer(ch);
+        auto* chPtr = inputBlock.getChannelPointer(ch);
         float sum = 0.0f;
-        for (size_t s = 0; s < context.getInputBlock().getNumSamples(); ++s)
+        for (size_t s = 0; s < inputBlock.getNumSamples(); ++s)
             sum += chPtr[s] * chPtr[s];
-        before += std::sqrt(sum / (float)context.getInputBlock().getNumSamples());
+        before += std::sqrt(sum / (float)inputBlock.getNumSamples());
     }
-    before /= (float)context.getInputBlock().getNumChannels();
+    before /= (float)inputBlock.getNumChannels();
 
     compressor.process(context);
     
     float after = 0.0f;
-    for (size_t ch = 0; ch < context.getOutputBlock().getNumChannels(); ++ch)
+    const auto& outputBlock = context.getOutputBlock();
+    for (size_t ch = 0; ch < outputBlock.getNumChannels(); ++ch)
     {
-        auto* chPtr = context.getOutputBlock().getChannelPointer(ch);
+        auto* chPtr = outputBlock.getChannelPointer(ch);
         float sum = 0.0f;
-        for (size_t s = 0; s < context.getOutputBlock().getNumSamples(); ++s)
+        for (size_t s = 0; s < outputBlock.getNumSamples(); ++s)
             sum += chPtr[s] * chPtr[s];
-        after += std::sqrt(sum / (float)context.getOutputBlock().getNumSamples());
+        after += std::sqrt(sum / (float)outputBlock.getNumSamples());
     }
-    after /= (float)context.getOutputBlock().getNumChannels();
+    after /= (float)outputBlock.getNumChannels();
     
     if (before > 0.00001f) {
-        float currentTarget = juce::Decibels::gainToDecibels(after / before);
-        lastReduction = lastReduction * 0.85f + currentTarget * 0.15f;
+        lastReduction = juce::Decibels::gainToDecibels(after / before);
     } else {
-        lastReduction *= 0.9f;
+        lastReduction = 0.0f;
     }
     
     // 3. Gain
@@ -106,7 +107,8 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
 
     if (sidechainBuffer.getNumChannels() > 0) {
         auto scRead = sidechainBuffer.getReadPointer(0);
-        for (int i = 0; i < buffer.getNumSamples(); ++i) {
+        int scSamples = juce::jmin(buffer.getNumSamples(), sidechainBuffer.getNumSamples());
+        for (int i = 0; i < scSamples; ++i) {
             pushNextSampleIntoFifo(scRead[i], scFifo, scFifoIndex, scNextFFTBlockReady);
         }
     }
@@ -119,7 +121,7 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
 
     for (int i = 0; i < (int)bands.size(); ++i) {
         auto& band = bands[i];
-        if (band->isMute() || (anySolo && !band->isSolo())) continue;
+        if (band->isMute() || (anySolo && !band->isSolo()) || !band->isActive()) continue;
 
         juce::AudioBuffer<float> bandBuffer;
         bandBuffer.makeCopyOf(buffer);
@@ -127,10 +129,10 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         juce::dsp::AudioBlock<float> block(bandBuffer);
         juce::dsp::ProcessContextReplacing<float> context(block);
         
-        band->process(context, sidechainBuffer, true);
+        band->process(context, sidechainBuffer);
         
-        for (int channel = 0; channel < buffer.getNumChannels(); ++channel) {
-            outputBuffer.addFrom(channel, 0, bandBuffer.getReadPointer(channel), buffer.getNumSamples());
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
+            outputBuffer.addFrom(ch, 0, bandBuffer, ch, 0, buffer.getNumSamples());
         }
     }
     

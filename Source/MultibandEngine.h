@@ -17,17 +17,19 @@ struct BandParameters {
     bool solo = false;
     bool mute = false;
     bool bypassed = false;
+    bool active = true;
 };
 
 class CompressorBand {
 public:
     CompressorBand();
     void prepare(const juce::dsp::ProcessSpec& spec);
-    void process(juce::dsp::ProcessContextReplacing<float>& context, const juce::AudioBuffer<float>& sidechainBuffer, bool useSidechain);
+    void process(juce::dsp::ProcessContextReplacing<float>& context, const juce::AudioBuffer<float>& sidechainBuffer);
     void updateParameters(const BandParameters& params);
     float getGainReduction() const;
     bool isSolo() const { return parameters.solo; }
     bool isMute() const { return parameters.mute; }
+    bool isActive() const { return parameters.active; }
 
 private:
     juce::dsp::LinkwitzRileyFilter<float> loPass, hiPass;
