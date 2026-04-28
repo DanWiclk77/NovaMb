@@ -66,7 +66,7 @@ public:
     }
 
     void setupSliders() {
-        auto createSlider = [this](juce::Slider& s, juce::String name) {
+        auto createSlider = [this](juce::Slider& s) {
             s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 22);
             s.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
@@ -74,10 +74,22 @@ public:
             addAndMakeVisible(s);
         };
 
-        createSlider(thresholdSlider, "THR");
-        createSlider(ratioSlider, "RAT");
-        createSlider(attackSlider, "ATK");
-        createSlider(releaseSlider, "REL");
+        createSlider(thresholdSlider);
+        createSlider(ratioSlider);
+        createSlider(attackSlider);
+        createSlider(releaseSlider);
+        createSlider(makeupSlider);
+        createSlider(kneeSlider);
+
+        auto createButton = [this](juce::TextButton& b, juce::String label) {
+            b.setButtonText(label);
+            b.setToggleable(true);
+            addAndMakeVisible(b);
+        };
+
+        createButton(soloButton, "SOLO");
+        createButton(muteButton, "MUTE");
+        createButton(extSCButton, "EXT SC");
     }
 
     void selectBand(int bandIndex) {
@@ -88,6 +100,11 @@ public:
         ratioAttachment.reset();
         attackAttachment.reset();
         releaseAttachment.reset();
+        makeupAttachment.reset();
+        kneeAttachment.reset();
+        soloAttachment.reset();
+        muteAttachment.reset();
+        extSCAttachment.reset();
 
         auto getID = [this](juce::String name) { return processor.getParamID(selectedBand, name).getParamID(); };
 
@@ -95,6 +112,12 @@ public:
         ratioAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("ratio"), ratioSlider);
         attackAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("attack"), attackSlider);
         releaseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("release"), releaseSlider);
+        makeupAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("makeup"), makeupSlider);
+        kneeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("knee"), kneeSlider);
+        
+        soloAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("solo"), soloButton);
+        muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("mute"), muteButton);
+        extSCAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("ext-sc"), extSCButton);
 
         repaint();
     }
@@ -117,23 +140,27 @@ public:
         // Header
         auto header = area.removeFromTop(80);
         g.setColour(juce::Colours::white);
-        g.setFont(juce::Font("Inter", 28.0f, juce::Font::bold));
+        g.setFont(juce::Font("Inter", 32.0f, juce::Font::bold));
         g.drawText("NOVAMB PRO", header.reduced(30, 0), juce::Justification::centredLeft);
         
         g.setFont(juce::Font("Inter", 11.0f, juce::Font::plain));
         g.setColour(juce::Colours::white.withAlpha(0.6f));
-        g.drawText("DIFFERENTIAL ENGINE v2.6 | PLATINUM EDITION", header.reduced(30, 0), juce::Justification::centredRight);
+        g.drawText("DIFFERENTIAL ENGINE v3.0 | MASTER PLATINUM", header.reduced(30, 0), juce::Justification::centredRight);
 
         // --- Spectral Analyzer ---
         auto body = area.reduced(24);
-        auto analyzerArea = body.removeFromTop(body.getHeight() * 0.58f);
+        auto analyzerArea = body.removeFromTop(body.getHeight() * 0.55f);
         
         drawPanel(g, analyzerArea, "REAL-TIME SPECTRAL DYNAMICS");
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
-        g.setColour(juce::Colours::black.withAlpha(0.7f));
+        g.setColour(juce::Colours::black.withAlpha(0.8f));
         g.fillRoundedRectangle(analyzerDisplay, 6.0f);
         
         drawGrids(g, analyzerDisplay);
+
+        // Spectrum Visuals
+        drawSpectrum(g, analyzerDisplay, false); // Normal Input
+        drawSpectrum(g, analyzerDisplay, true);  // Sidechain
 
         // Bands UI
         const juce::Colour bandColors[] = { juce::Colour(0xff3b82f6), juce::Colour(0xffec4899), juce::Colour(0xff10b981) };
@@ -145,30 +172,23 @@ public:
             bool isSelected = (i == selectedBand);
             
             // Subtle Band Highlight
-            g.setColour(bandColors[i].withAlpha(isSelected ? 0.12f : 0.03f));
+            g.setColour(bandColors[i].withAlpha(isSelected ? 0.15f : 0.05f));
             g.fillRect(bArea.reduced(2, 0));
             
             // Band Top Accent
             g.setColour(bandColors[i].withAlpha(isSelected ? 1.0f : 0.5f));
-            g.fillRect(bArea.withHeight(isSelected ? 3.0f : 1.0f));
-
-            // Band Name Label
-            g.setColour(juce::Colours::white.withAlpha(0.4f));
-            g.setFont(juce::Font("Inter", 10.0f, juce::Font::bold));
-            g.drawText(bandNames[i], bArea.withHeight(25).translated(0, 5), juce::Justification::centred);
+            g.fillRect(bArea.withHeight(isSelected ? 4.0f : 1.0f));
 
             // Gain Reduction Drawing & Numerical Display
             float gr = engine.getGainReduction(i);
             if (std::abs(gr) > 0.05f) {
-                // Visual Meter
-                float grH = std::fmin(std::abs(gr) * 12.0f, bArea.getHeight());
-                g.setColour(juce::Colours::red.withAlpha(0.25f));
+                float grH = std::fmin(std::abs(gr) * 15.0f, bArea.getHeight());
+                g.setColour(juce::Colours::red.withAlpha(0.3f));
                 g.fillRect(bArea.withHeight(grH));
 
-                // Numerical GR Value (Pro Feedback)
                 g.setColour(juce::Colours::red.withAlpha(0.9f));
-                g.setFont(juce::Font("JetBrains Mono", 13.0f, juce::Font::bold));
-                g.drawText(juce::String(gr, 1) + " dB", bArea.withHeight(30).withY(bArea.getBottom() - 35), juce::Justification::centred);
+                g.setFont(juce::Font("JetBrains Mono", 14.0f, juce::Font::bold));
+                g.drawText(juce::String(gr, 1) + " dB", bArea.withHeight(30).withY(bArea.getBottom() - 40), juce::Justification::centred);
             }
 
             if (isSelected) {
@@ -179,34 +199,88 @@ public:
             }
         }
 
+        drawGRCurve(g, analyzerDisplay);
+
         // --- Controls Section ---
-        body.removeFromTop(24);
+        body.removeFromTop(20);
         auto controlsArea = body;
-        drawPanel(g, controlsArea, "BAND " + juce::String(selectedBand + 1) + " CONTROLS");
+        drawPanel(g, controlsArea, "BAND " + juce::String(selectedBand + 1) + " PARAMETERS");
         
-        auto labelArea = controlsArea.reduced(80, 40).withHeight(20);
-        auto w = labelArea.getWidth() / 4;
-        g.setColour(juce::Colours::white.withAlpha(0.6f));
-        g.setFont(juce::Font("Inter", 11.0f, juce::Font::bold));
-        
-        juce::String labels[] = { "THRESHOLD", "RATIO", "ATTACK", "RELEASE" };
-        for (int i = 0; i < 4; ++i) {
-            g.drawText(labels[i], labelArea.removeFromLeft(w), juce::Justification::centred);
+        auto labelArea = controlsArea.reduced(20, 20).withHeight(20);
+        labelArea.removeFromTop(40); // align with sliders
+        // No explicit labels needed if using Slider TextBoxes, but can add if requested
+    }
+
+    void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> r, bool isSidechain) {
+        std::vector<float> data(processor.getFFTSize() / 2);
+        if (isSidechain) processor.getSidechainFFTData(data.data());
+        else processor.getFFTData(data.data());
+
+        juce::Path p;
+        p.startNewSubPath(r.getX(), r.getBottom());
+
+        for (int i = 0; i < (int)data.size(); ++i) {
+            float x = r.getX() + (juce::jmap((float)i, 0.0f, (float)data.size(), 0.0f, 1.0f) * r.getWidth());
+            float level = juce::jlimit(0.0f, 1.0f, juce::Decibels::gainToDecibels(data[i] + 0.0001f) / 100.0f + 1.0f);
+            float y = r.getBottom() - (level * r.getHeight());
+            p.lineTo(x, y);
         }
+
+        p.lineTo(r.getRight(), r.getBottom());
+        p.closeSubPath();
+
+        g.setColour(isSidechain ? juce::Colours::orange.withAlpha(0.2f) : juce::Colours::cyan.withAlpha(0.25f));
+        g.fillPath(p);
+        g.setColour(isSidechain ? juce::Colours::orange.withAlpha(0.6f) : juce::Colours::cyan.withAlpha(0.7f));
+        g.strokePath(p, juce::PathStrokeType(1.2f));
+    }
+
+    void drawGRCurve(juce::Graphics& g, juce::Rectangle<float> r) {
+        juce::Path p;
+        p.startNewSubPath(r.getX(), r.getY());
+        
+        float bandW = r.getWidth() / 3.0f;
+        for (int i = 0; i < 3; ++i) {
+            float gr = engine.getGainReduction(i);
+            float dip = juce::jlimit(0.0f, 1.0f, std::abs(gr) / 24.0f) * 70.0f;
+            float x1 = r.getX() + i * bandW;
+            float xM = x1 + bandW * 0.5f;
+            float x2 = x1 + bandW;
+            
+            p.lineTo(x1 + bandW * 0.1f, r.getY());
+            p.cubicTo(x1 + bandW * 0.3f, r.getY(), xM - bandW * 0.1f, r.getY() + dip, xM, r.getY() + dip);
+            p.cubicTo(xM + bandW * 0.1f, r.getY() + dip, x2 - bandW * 0.3f, r.getY(), x2 - bandW * 0.1f, r.getY());
+        }
+        p.lineTo(r.getRight(), r.getY());
+        
+        g.setColour(juce::Colours::red.withAlpha(0.7f));
+        g.strokePath(p, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     void resized() override {
         auto area = getLocalBounds().reduced(24);
-        area.removeFromTop(area.getHeight() * 0.65f); 
+        area.removeFromTop(area.getHeight() * 0.60f); 
         
-        auto controlGrid = area.reduced(80, 40);
-        controlGrid.removeFromTop(25); // Make room for labels
-        auto w = controlGrid.getWidth() / 4;
+        auto controlGrid = area.reduced(20, 20);
+        controlGrid.removeFromTop(40); // Title space
         
-        thresholdSlider.setBounds(controlGrid.removeFromLeft(w).reduced(10));
-        ratioSlider.setBounds(controlGrid.removeFromLeft(w).reduced(10));
-        attackSlider.setBounds(controlGrid.removeFromLeft(w).reduced(10));
-        releaseSlider.setBounds(controlGrid.removeFromLeft(w).reduced(10));
+        auto bottomRow = controlGrid.removeFromBottom(controlGrid.getHeight() * 0.5f);
+        
+        auto topW = controlGrid.getWidth() / 4;
+        thresholdSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
+        ratioSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
+        attackSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
+        releaseSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
+
+        auto botW = bottomRow.getWidth() / 5;
+        makeupSlider.setBounds(bottomRow.removeFromLeft(botW).reduced(10));
+        kneeSlider.setBounds(bottomRow.removeFromLeft(botW).reduced(10));
+        
+        auto btnArea = bottomRow;
+        float btnH = btnArea.getHeight() / 3.0f;
+        soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(5));
+        muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(5));
+        extSCButton.setBounds(btnArea.reduced(5));
     }
 
     void drawPanel(juce::Graphics& g, juce::Rectangle<float> r, juce::String title) {
@@ -250,8 +324,11 @@ private:
     PlatinumLookAndFeel platinumLF;
     int selectedBand = 1;
 
-    juce::Slider thresholdSlider, ratioSlider, attackSlider, releaseSlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thresholdAttachment, ratioAttachment, attackAttachment, releaseAttachment;
+    juce::Slider thresholdSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider, kneeSlider;
+    juce::TextButton soloButton, muteButton, extSCButton;
+    
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thresholdAttachment, ratioAttachment, attackAttachment, releaseAttachment, makeupAttachment, kneeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAttachment, muteAttachment, extSCAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NovaMBEditor)
 };
@@ -296,6 +373,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout NovaMBAudioProcessor::create
         params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), bandName + "Ratio", juce::NormalisableRange<float>(1.0f, 20.0f, 0.1f), 4.0f, juce::AudioParameterFloatAttributes().withLabel(":1").withStringFromValueFunction(ratioString)));
         params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), bandName + "Attack", juce::NormalisableRange<float>(0.1f, 500.0f, 0.1f), 20.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
         params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), bandName + "Release", juce::NormalisableRange<float>(10.0f, 2000.0f, 1.0f), 100.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "makeup"), bandName + "Makeup Gain", juce::NormalisableRange<float>(0.0f, 24.0f, 0.1f), 0.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "knee"), bandName + "Knee", juce::NormalisableRange<float>(0.0f, 30.0f, 0.1f), 6.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "solo"), bandName + "Solo", false));
+        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "mute"), bandName + "Mute", false));
+        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "ext-sc"), bandName + "External SC", false));
     }
     return { params.begin(), params.end() };
 }
@@ -314,11 +396,25 @@ void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
         b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
         b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
+        b.makeUpGain = apvts.getRawParameterValue(getParamID(i, "makeup").getParamID())->load();
+        b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
+        b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
+        b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
+        b.sidechainExternal = apvts.getRawParameterValue(getParamID(i, "ext-sc").getParamID())->load() > 0.5f;
         engine.updateBand(i, b);
     }
 
-    auto sidechainBuffer = getBusBuffer(buffer, true, 1);
-    engine.process(buffer, sidechainBuffer);
+    // Fix sidechain crash: Check if bus index 1 exists and is enabled
+    auto mainBus = getBus(true, 0);
+    auto sidechainBus = getBus(true, 1);
+    
+    if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
+        auto scBuffer = getBusBuffer(buffer, true, 1);
+        engine.process(buffer, scBuffer);
+    } else {
+        juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
+        engine.process(buffer, emptySC);
+    }
 }
 
 juce::AudioProcessorEditor* NovaMBAudioProcessor::createEditor() {

@@ -9,7 +9,7 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
-    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
@@ -29,6 +29,11 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+    
+    // Analytics
+    void getFFTData(float* dest) { engine.getFFTData(dest); }
+    void getSidechainFFTData(float* dest) { engine.getSidechainFFTData(dest); }
+    int getFFTSize() const { return engine.getFFTSize(); }
 
     static juce::ParameterID getParamID(int band, juce::String name);
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
