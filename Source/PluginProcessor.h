@@ -28,6 +28,8 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+
     static juce::ParameterID getParamID(int band, juce::String name);
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
