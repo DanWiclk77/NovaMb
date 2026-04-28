@@ -284,7 +284,7 @@ public:
                 
                 g.setFont(juce::Font("Inter", 12.0f, juce::Font::bold));
                 g.setColour(juce::Colours::white);
-                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].withHeight(20).withY(grHeight + 5), juce::Justification::centredTop);
+                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].withHeight(20).withY(analyzerDisplay.getY() + grHeight + 5), juce::Justification::centredTop);
             }
         }
 
@@ -381,6 +381,7 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override {
         auto area = getLocalBounds().toFloat().reduced(24);
+        area.removeFromLeft(80); // Correct for sidebar
         auto analyzerArea = area.removeFromTop(area.getHeight() * 0.53f);
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
 
@@ -393,8 +394,8 @@ public:
                 return analyzerDisplay.getX() + norm * analyzerDisplay.getWidth();
             };
 
-            if (std::abs(e.position.x - freqToX(cross1)) < 25.0f) draggingCrossover = 1;
-            else if (std::abs(e.position.x - freqToX(cross2)) < 25.0f) draggingCrossover = 2;
+            if (std::abs(e.position.x - freqToX(cross1)) < 30.0f) draggingCrossover = 1;
+            else if (std::abs(e.position.x - freqToX(cross2)) < 30.0f) draggingCrossover = 2;
             else {
                 float relX = (e.position.x - analyzerDisplay.getX()) / analyzerDisplay.getWidth();
                 float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
@@ -409,6 +410,7 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override {
         if (draggingCrossover == 0) return;
         auto area = getLocalBounds().toFloat().reduced(24);
+        area.removeFromLeft(80); // Correct for sidebar
         auto analyzerArea = area.removeFromTop(area.getHeight() * 0.53f);
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
 
