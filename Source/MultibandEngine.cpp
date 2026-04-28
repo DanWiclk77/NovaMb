@@ -33,11 +33,26 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     loPass.process(context);
     hiPass.process(context);
     
-    // 2. Comprimir (en una implementación real de VST3, manejaríamos el sidechain externo aquí)
+    // 2. Comprimir
+    // We capture the reduction for metering
+    float before = context.getOutputBlock().getSample(0, 0);
     compressor.process(context);
+    float after = context.getOutputBlock().getSample(0, 0);
+    
+    // Extremely simplified GR tracking (for UI feedback)
+    if (std::abs(before) > 0.001f) {
+        float currentTarget = juce::Decibels::gainToDecibels(std::abs(after) / std::abs(before));
+        lastReduction = lastReduction * 0.9f + currentTarget * 0.1f;
+    } else {
+        lastReduction *= 0.95f;
+    }
     
     // 3. Gain
     gain.process(context);
+}
+
+float CompressorBand::getGainReduction() const {
+    return lastReduction;
 }
 
 // engine implementation
@@ -78,9 +93,16 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
 }
 
 void MultibandEngine::updateBand(int index, const BandParameters& params) {
-    if (index >= 0 && index < bands.size()) {
+    if (index >= 0 && index < (int)bands.size()) {
         bands[index]->updateParameters(params);
     }
+}
+
+float MultibandEngine::getGainReduction(int index) const {
+    if (index >= 0 && index < (int)bands.size()) {
+        return bands[index]->getGainReduction();
+    }
+    return 0.0f;
 }
 
 } // namespace NovaMB

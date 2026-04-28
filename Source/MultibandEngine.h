@@ -37,6 +37,7 @@ public:
     void prepare(const juce::dsp::ProcessSpec& spec);
     void process(juce::AudioBuffer<float>& buffer, const juce::AudioBuffer<float>& sidechainBuffer);
     void updateBand(int index, const BandParameters& params);
+    float getGainReduction(int index) const;
 
 private:
     std::vector<std::unique_ptr<CompressorBand>> bands;
