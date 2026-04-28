@@ -44,6 +44,47 @@ public:
         g.setColour(juce::Colours::white);
         g.fillPath(p);
     }
+
+    void drawButtonBackground (juce::Graphics& g, juce::Button& button,
+                               const juce::Colour& backgroundColour,
+                               bool shouldDrawButtonAsHighlighted,
+                               bool shouldDrawButtonAsDown) override
+    {
+        auto cornerSize = 4.0f;
+        auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
+        
+        bool isToggled = button.getToggleState();
+        auto baseColor = isToggled ? juce::Colours::cyan.withAlpha (0.4f) : juce::Colour (0xff1a1a1a);
+        
+        g.setColour (baseColor);
+        g.fillRoundedRectangle (bounds, cornerSize);
+        
+        g.setColour (isToggled ? juce::Colours::cyan : juce::Colours::white.withAlpha (0.1f));
+        g.drawRoundedRectangle (bounds, cornerSize, 1.0f);
+        
+        if (isToggled) {
+            g.setColour(juce::Colours::cyan.withAlpha(0.3f));
+            g.drawRoundedRectangle(bounds.expanded(1.0f), cornerSize, 2.5f);
+            g.setColour(juce::Colours::cyan.withAlpha(0.15f));
+            g.drawRoundedRectangle(bounds.expanded(2.5f), cornerSize, 5.0f);
+        }
+    }
+
+    void drawButtonText (juce::Graphics& g, juce::TextButton& button,
+                         bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
+    {
+        juce::Font font (getTextButtonFont (button, button.getHeight()));
+        g.setFont (font);
+        g.setColour (button.getToggleState() ? juce::Colours::white : juce::Colours::white.withAlpha (0.6f));
+
+        auto yIndent = juce::jmin (4.0f, (float) button.getHeight() * 0.3f);
+        auto cornerSize = juce::jmin (button.getWidth(), button.getHeight()) / 2.0f;
+
+        auto fontHeight = font.getHeight();
+        auto textBounds = button.getLocalBounds().withTrimmedTop ((button.getHeight() - fontHeight) / 2).withHeight (fontHeight);
+        
+        g.drawText (button.getButtonText(), textBounds, juce::Justification::centred, true);
+    }
 };
 
 // --- Custom Editor Class ---
@@ -133,15 +174,29 @@ public:
 
     void showPresetMenu() {
         juce::PopupMenu m;
-        m.addItem(1, "Clean Master"); 
-        m.addItem(2, "Punchy Drums"); 
-        m.addItem(3, "Silky Vocals");
+        m.addItem(1, "Clean Master"); m.addItem(2, "Punchy Drums"); m.addItem(3, "Silky Vocals");
+        
+        juce::PopupMenu genreMenu;
+        genreMenu.addItem(100, "Techno Peak"); genreMenu.addItem(101, "Melodic Techno");
+        genreMenu.addItem(102, "House Classic"); genreMenu.addItem(103, "Tech House");
+        genreMenu.addItem(104, "Acid House"); genreMenu.addItem(105, "Psytrance");
+        genreMenu.addItem(106, "Uplifting Trance"); genreMenu.addItem(107, "Acid Techno");
+        genreMenu.addItem(108, "Rock Arena"); genreMenu.addItem(109, "Jazz Club");
+        genreMenu.addItem(110, "Blues Soul"); genreMenu.addItem(111, "Disco Disco");
+        genreMenu.addItem(112, "Pop Radio"); genreMenu.addItem(113, "Hip Hop West");
+        genreMenu.addItem(114, "Rap Mainstage"); genreMenu.addItem(115, "Future House");
+        genreMenu.addItem(116, "Cyberpunk 2077"); genreMenu.addItem(117, "Drum & Bass Liquid");
+        m.addSubMenu("Genres", genreMenu);
+        
+        juce::PopupMenu busMenu;
+        busMenu.addItem(200, "Drum Bus Pro"); busMenu.addItem(201, "Vocal Bus Glue");
+        busMenu.addItem(202, "Master Chain"); busMenu.addItem(203, "Mix Bus Air");
+        m.addSubMenu("Buses", busMenu);
         
         m.showMenuAsync(juce::PopupMenu::Options(), [this](int result) {
             if (result == 0) return;
-            
             auto& apvts = processor.getAPVTS();
-            auto setAllBands = [&](float t, float r, float a, float rel) {
+            auto setAll = [&](float t, float r, float a, float rel) {
                 for (int i = 0; i < 3; ++i) {
                     auto setP = [&](juce::String n, float v) {
                         if (auto* p = apvts.getParameter(processor.getParamID(i, n).getParamID()))
@@ -150,10 +205,24 @@ public:
                     setP("threshold", t); setP("ratio", r); setP("attack", a); setP("release", rel);
                 }
             };
-
-            if (result == 1) setAllBands(-12.0f, 2.0f, 50.0f, 200.0f);
-            else if (result == 2) setAllBands(-18.0f, 6.0f, 10.0f, 50.0f);
-            else if (result == 3) setAllBands(-15.0f, 3.0f, 40.0f, 150.0f);
+            if (result == 1) setAll(-12, 1.5, 50, 200);
+            else if (result == 2) setAll(-18, 4, 30, 100);
+            else if (result == 3) setAll(-15, 3, 40, 150);
+            else if (result == 100) setAll(-10, 2.5, 5, 40);    // Techno
+            else if (result == 101) setAll(-12, 3, 20, 80);     // Melodic Techno
+            else if (result == 102) setAll(-14, 2, 30, 100);    // House
+            else if (result == 103) setAll(-13, 3, 25, 90);     // Tech House
+            else if (result == 105) setAll(-16, 6, 10, 50);     // Psytrance
+            else if (result == 106) setAll(-12, 1.8, 60, 250);  // Trance
+            else if (result == 107) setAll(-11, 4, 15, 60);     // Acid
+            else if (result == 108) setAll(-12, 3, 40, 150);    // Rock
+            else if (result == 113) setAll(-14, 4, 20, 80);     // Hip Hop
+            else if (result == 116) setAll(-15, 8, 2, 20);      // Cyberpunk
+            else if (result == 117) setAll(-14, 5, 20, 60);     // D&B
+            else if (result == 200) setAll(-24, 6, 40, 100);    // Drum Bus
+            else if (result == 201) setAll(-10, 1.5, 100, 300); // Vocal Glue
+            else if (result == 202) setAll(-4, 1.2, 80, 400);   // Master Chain
+            else if (result == 203) setAll(-8, 2, 50, 250);     // Mix Bus
         });
     }
 
@@ -212,25 +281,52 @@ public:
         g.setColour(juce::Colours::white.withAlpha(0.4f));
         g.drawVerticalLine((int)x1, analyzerDisplay.getY(), analyzerDisplay.getBottom());
         g.drawVerticalLine((int)x2, analyzerDisplay.getY(), analyzerDisplay.getBottom());
+        
+        // Frequency Labels
+        g.setFont(juce::Font("Inter", 11.0f, juce::Font::bold));
+        g.setColour(juce::Colours::white.withAlpha(0.7f));
+        g.drawText(juce::String((int)cross1) + "Hz", x1 - 30, analyzerDisplay.getBottom() + 2, 60, 20, juce::Justification::centred);
+        g.drawText(juce::String((int)cross2) + "Hz", x2 - 30, analyzerDisplay.getBottom() + 2, 60, 20, juce::Justification::centred);
+
+        // Band Frequencies
+        g.setFont(juce::Font("Inter", 10.0f, juce::Font::plain));
+        g.setColour(juce::Colours::white.withAlpha(0.4f));
+        g.drawText("20Hz-" + juce::String((int)cross1) + "Hz", bandRects[0].withY(analyzerDisplay.getY() + 10).withHeight(20), juce::Justification::centred);
+        g.drawText(juce::String((int)cross1) + "Hz-" + juce::String((int)cross2) + "Hz", bandRects[1].withY(analyzerDisplay.getY() + 10).withHeight(20), juce::Justification::centred);
+        g.drawText(juce::String((int)cross2) + "Hz-20kHz", bandRects[2].withY(analyzerDisplay.getY() + 10).withHeight(20), juce::Justification::centred);
+
         g.setColour(juce::Colours::cyan);
-        g.fillEllipse(x1 - 4, analyzerDisplay.getCentreY() - 4, 8, 8);
-        g.fillEllipse(x2 - 4, analyzerDisplay.getCentreY() - 4, 8, 8);
+        g.fillEllipse(x1 - 5, analyzerDisplay.getCentreY() - 5, 10, 10);
+        g.fillEllipse(x2 - 5, analyzerDisplay.getCentreY() - 5, 10, 10);
+
+        if (draggingCrossover > 0) {
+            float activeX = (draggingCrossover == 1) ? x1 : x2;
+            g.setColour(juce::Colours::cyan.withAlpha(0.3f));
+            g.fillEllipse(activeX - 12, analyzerDisplay.getCentreY() - 12, 24, 24);
+        }
 
         drawGRCurve(g, analyzerDisplay);
 
         body.removeFromTop(20);
         auto controlsArea = body;
         drawPanel(g, controlsArea, "BAND " + juce::String(selectedBand + 1) + " PARAMETERS");
-        auto controlGrid = controlsArea.reduced(20, 20); controlGrid.removeFromTop(35);
-        g.setColour(juce::Colours::white.withAlpha(0.5f)); g.setFont(juce::Font("Inter", 10.0f, juce::Font::bold));
-        auto topRow = controlGrid.withHeight(controlGrid.getHeight() * 0.45f);
-        auto w = topRow.getWidth() / 4.0f;
+        auto controlGrid = controlsArea.reduced(20, 20); 
+        controlGrid.removeFromTop(35);
+        
+        g.setColour(juce::Colours::white.withAlpha(0.5f)); 
+        g.setFont(juce::Font("Inter", 10.0f, juce::Font::bold));
+        
+        auto labelArea = controlGrid.removeFromTop(25);
+        auto w = labelArea.getWidth() / 4.0f;
         juce::String labels[] = { "THRESHOLD", "RATIO", "ATTACK", "RELEASE" };
-        for (int i = 0; i < 4; ++i) g.drawText(labels[i], topRow.getX() + i * w, topRow.getY(), w, 20, juce::Justification::centred);
-        auto botRow = controlGrid.removeFromBottom(controlGrid.getHeight() * 0.45f);
-        auto bW = botRow.getWidth() / 5.0f;
-        g.drawText("MAKEUP", botRow.getX(), botRow.getY(), bW, 20, juce::Justification::centred);
-        g.drawText("KNEE", botRow.getX() + bW, botRow.getY(), bW, 20, juce::Justification::centred);
+        for (int i = 0; i < 4; ++i) g.drawText(labels[i], labelArea.getX() + i * w, labelArea.getY(), w, 20, juce::Justification::centred);
+        
+        controlGrid.removeFromTop(controlGrid.getHeight() * 0.5f); // Knobs area
+        
+        auto botLabelArea = controlGrid.removeFromTop(25);
+        auto bW = botLabelArea.getWidth() / 5.0f;
+        g.drawText("MAKEUP", botLabelArea.getX(), botLabelArea.getY(), bW, 20, juce::Justification::centred);
+        g.drawText("KNEE", botLabelArea.getX() + bW, botLabelArea.getY(), bW, 20, juce::Justification::centred);
     }
 
     void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> r, bool isSidechain) {
@@ -273,20 +369,23 @@ public:
     }
 
     void mouseDown(const juce::MouseEvent& e) override {
-        auto analyzerArea = getLocalBounds().toFloat().reduced(24).removeFromTop(getHeight() * 0.40f);
-        if (analyzerArea.contains(e.position)) {
+        auto area = getLocalBounds().toFloat().reduced(24);
+        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.53f);
+        auto analyzerDisplay = analyzerArea.reduced(2, 35);
+
+        if (analyzerDisplay.contains(e.position)) {
             float cross1 = processor.getAPVTS().getRawParameterValue("cross_low_mid")->load();
             float cross2 = processor.getAPVTS().getRawParameterValue("cross_mid_high")->load();
             
             auto freqToX = [&](float f) {
                 float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
-                return analyzerArea.getX() + norm * analyzerArea.getWidth();
+                return analyzerDisplay.getX() + norm * analyzerDisplay.getWidth();
             };
 
-            if (std::abs(e.position.x - freqToX(cross1)) < 15.0f) draggingCrossover = 1;
-            else if (std::abs(e.position.x - freqToX(cross2)) < 15.0f) draggingCrossover = 2;
+            if (std::abs(e.position.x - freqToX(cross1)) < 25.0f) draggingCrossover = 1;
+            else if (std::abs(e.position.x - freqToX(cross2)) < 25.0f) draggingCrossover = 2;
             else {
-                float relX = (e.position.x - analyzerArea.getX()) / analyzerArea.getWidth();
+                float relX = (e.position.x - analyzerDisplay.getX()) / analyzerDisplay.getWidth();
                 float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
                 if (f < cross1) selectBand(0);
                 else if (f < cross2) selectBand(1);
@@ -298,15 +397,27 @@ public:
 
     void mouseDrag(const juce::MouseEvent& e) override {
         if (draggingCrossover == 0) return;
-        auto analyzerArea = getLocalBounds().toFloat().reduced(24).removeFromTop(getHeight() * 0.40f);
-        float relX = juce::jlimit(0.0f, 1.0f, (e.position.x - analyzerArea.getX()) / analyzerArea.getWidth());
+        auto area = getLocalBounds().toFloat().reduced(24);
+        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.53f);
+        auto analyzerDisplay = analyzerArea.reduced(2, 35);
+
+        float relX = juce::jlimit(0.0f, 1.0f, (e.position.x - analyzerDisplay.getX()) / analyzerDisplay.getWidth());
         float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
         
-        auto& crossLowMid = *processor.getAPVTS().getParameter("cross_low_mid");
-        auto& crossMidHigh = *processor.getAPVTS().getParameter("cross_mid_high");
-
-        if (draggingCrossover == 1) crossLowMid.setValueNotifyingHost(crossLowMid.getNormalisableRange().convertTo0to1(f));
-        else if (draggingCrossover == 2) crossMidHigh.setValueNotifyingHost(crossMidHigh.getNormalisableRange().convertTo0to1(f));
+        auto& apvts = processor.getAPVTS();
+        if (draggingCrossover == 1) {
+            float c2 = apvts.getRawParameterValue("cross_mid_high")->load();
+            if (f < c2 - 50.0f) {
+                auto* p = apvts.getParameter("cross_low_mid");
+                p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(f));
+            }
+        } else if (draggingCrossover == 2) {
+            float c1 = apvts.getRawParameterValue("cross_low_mid")->load();
+            if (f > c1 + 50.0f) {
+                auto* p = apvts.getParameter("cross_mid_high");
+                p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(p->getNormalisableRange().snapToLegalValue(f)));
+            }
+        }
     }
 
     void mouseUp(const juce::MouseEvent&) override { draggingCrossover = 0; }
@@ -315,17 +426,29 @@ public:
     void resized() override {
         auto area = getLocalBounds().reduced(24); area.removeFromLeft(56); 
         presetButton.setBounds(10, 150, 60, 30); aiButton.setBounds(10, 200, 60, 30);
-        area.removeFromTop(area.getHeight() * 0.58f); auto controlGrid = area.reduced(20, 20); controlGrid.removeFromTop(40);
-        auto bottomRow = controlGrid.removeFromBottom(controlGrid.getHeight() * 0.5f);
-        auto topW = controlGrid.getWidth() / 4;
-        thresholdSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
-        ratioSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
-        attackSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
-        releaseSlider.setBounds(controlGrid.removeFromLeft(topW).reduced(10));
-        auto botW = bottomRow.getWidth() / 5;
-        makeupSlider.setBounds(bottomRow.removeFromLeft(botW).reduced(10));
-        kneeSlider.setBounds(bottomRow.removeFromLeft(botW).reduced(10));
-        auto btnArea = bottomRow.reduced(10, 0); float btnH = btnArea.getHeight() / 4.0f;
+        
+        area.removeFromTop(area.getHeight() * 0.58f); 
+        auto controlsArea = area.reduced(20, 20); 
+        controlsArea.removeFromTop(40);
+        
+        auto topHalf = controlsArea.removeFromTop(controlsArea.getHeight() * 0.5f);
+        topHalf.removeFromTop(25); // Space for labels
+        
+        auto knobW = topHalf.getWidth() / 4;
+        thresholdSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
+        ratioSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
+        attackSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
+        releaseSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
+        
+        auto bottomHalf = controlsArea;
+        bottomHalf.removeFromTop(25); // Space for labels
+        
+        auto botKnobW = bottomHalf.getWidth() / 5;
+        makeupSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(10));
+        kneeSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(10));
+        
+        auto btnArea = bottomHalf.reduced(10, 0); 
+        float btnH = btnArea.getHeight() / 4.0f;
         soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
         muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
         extSCButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));

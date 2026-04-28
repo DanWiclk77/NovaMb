@@ -35,40 +35,63 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     loPass.process(context);
     hiPass.process(context);
     
-    // 2. Calculate average level
+    // 2. Measure level before compression
     float before = 0.0f;
-    const auto& inputBlock = context.getInputBlock();
-    for (size_t ch = 0; ch < inputBlock.getNumChannels(); ++ch)
-    {
-        auto* chPtr = inputBlock.getChannelPointer(ch);
+    auto& block = context.getOutputBlock();
+    for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
         float sum = 0.0f;
-        for (size_t s = 0; s < inputBlock.getNumSamples(); ++s)
-            sum += chPtr[s] * chPtr[s];
-        before += std::sqrt(sum / (float)inputBlock.getNumSamples());
+        auto* chPtr = block.getChannelPointer(ch);
+        for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
+        before += std::sqrt(sum / (float)block.getNumSamples());
     }
-    before /= (float)inputBlock.getNumChannels();
+    before /= (float)block.getNumChannels();
 
-    compressor.process(context);
+    if (parameters.sidechainExternal && sidechainBuffer.getNumSamples() > 0) {
+        // Use external sidechain: Process sidechain buffer with compressor to get gain reduction
+        juce::AudioBuffer<float> scCopy;
+        scCopy.makeCopyOf(sidechainBuffer);
+        juce::dsp::AudioBlock<float> scBlock(scCopy);
+        juce::dsp::ProcessContextReplacing<float> scContext(scBlock);
+        compressor.process(scContext);
+        
+        // Measure sidechain gain reduction
+        float scAfter = 0.0f;
+        for (size_t ch = 0; ch < scBlock.getNumChannels(); ++ch) {
+            float sum = 0.0f;
+            auto* chPtr = scBlock.getChannelPointer(ch);
+            for (size_t s = 0; s < scBlock.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
+            scAfter += std::sqrt(sum / (float)scBlock.getNumSamples());
+        }
+        scAfter /= (float)scBlock.getNumChannels();
+        
+        // Measure sidechain before (simple rms)
+        float scBefore = 0.0f;
+        for (size_t ch = 0; ch < sidechainBuffer.getNumChannels(); ++ch) {
+            float sum = 0.0f;
+            auto* chPtr = sidechainBuffer.getReadPointer(ch);
+            for (size_t s = 0; s < (size_t)sidechainBuffer.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
+            scBefore += std::sqrt(sum / (float)sidechainBuffer.getNumSamples());
+        }
+        scBefore /= (float)sidechainBuffer.getNumChannels();
+
+        float gainReduction = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
+        block.multiplyBy(gainReduction);
+    } else {
+        compressor.process(context);
+    }
     
     float after = 0.0f;
-    const auto& outputBlock = context.getOutputBlock();
-    for (size_t ch = 0; ch < outputBlock.getNumChannels(); ++ch)
-    {
-        auto* chPtr = outputBlock.getChannelPointer(ch);
+    for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
         float sum = 0.0f;
-        for (size_t s = 0; s < outputBlock.getNumSamples(); ++s)
-            sum += chPtr[s] * chPtr[s];
-        after += std::sqrt(sum / (float)outputBlock.getNumSamples());
+        auto* chPtr = block.getChannelPointer(ch);
+        for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
+        after += std::sqrt(sum / (float)block.getNumSamples());
     }
-    after /= (float)outputBlock.getNumChannels();
+    after /= (float)block.getNumChannels();
     
-    if (before > 0.00001f) {
-        lastReduction = juce::Decibels::gainToDecibels(after / before);
-    } else {
-        lastReduction = 0.0f;
-    }
+    lastReduction = (before > 0.0001f) ? juce::Decibels::gainToDecibels(after / before) : 0.0f;
     
-    // 3. Gain
+    // 3. Makeup Gain
     gain.process(context);
 }
 
@@ -105,8 +128,8 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         pushNextSampleIntoFifo(mainRead[i], fifo, fifoIndex, nextFFTBlockReady);
     }
 
-    if (sidechainBuffer.getNumChannels() > 0) {
-        auto scRead = sidechainBuffer.getReadPointer(0);
+    if (sidechainBuffer.getNumSamples() > 0 && sidechainBuffer.getNumChannels() > 0) {
+        auto* scRead = sidechainBuffer.getReadPointer(0);
         int scSamples = juce::jmin(buffer.getNumSamples(), sidechainBuffer.getNumSamples());
         for (int i = 0; i < scSamples; ++i) {
             pushNextSampleIntoFifo(scRead[i], scFifo, scFifoIndex, scNextFFTBlockReady);
