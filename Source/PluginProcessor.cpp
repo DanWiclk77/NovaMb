@@ -134,7 +134,7 @@ public:
         g.fillRect(sidebar);
         
         // Logo Accent - Dynamic Pulse
-        float pulse = std::sin(juce::Timer::getRawElapsedTime() * 4.0f) * 0.2f + 0.8f;
+        float pulse = std::sin((float)(juce::Time::getMillisecondCounterHiRes() * 0.004) * 4.0f) * 0.2f + 0.8f;
         g.setColour(juce::Colours::cyan.withAlpha(pulse));
         g.fillEllipse(sidebar.getCentreX() - 15, 30, 30, 30);
         
