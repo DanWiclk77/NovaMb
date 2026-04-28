@@ -120,7 +120,6 @@ public:
         };
 
         createButton(soloButton, "SOLO"); createButton(muteButton, "MUTE");
-        createButton(activeToggleButton, "ACTIVE");
 
         addAndMakeVisible(modeSelector); modeSelector.addItem("COMPRESS", 1); modeSelector.addItem("EXPAND", 2);
         addAndMakeVisible(scSelector); scSelector.addItem("INTERNAL SC", 1); scSelector.addItem("EXTERNAL SC", 2);
@@ -138,7 +137,6 @@ public:
         attackAttachment.reset(); releaseAttachment.reset();
         makeupAttachment.reset(); kneeAttachment.reset();
         soloAttachment.reset(); muteAttachment.reset();
-        activeAttachment.reset();
         modeAttachment.reset(); scAttachment.reset();
 
         auto getID = [this](juce::String name) { return processor.getParamID(selectedBand, name).getParamID(); };
@@ -151,7 +149,6 @@ public:
         kneeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("knee"), kneeSlider);
         soloAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("solo"), soloButton);
         muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("mute"), muteButton);
-        activeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("active"), activeToggleButton);
         modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.getAPVTS(), getID("mode"), modeSelector);
         scAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.getAPVTS(), getID("sc-source"), scSelector);
 
@@ -271,8 +268,6 @@ public:
         const juce::Colour bandColors[] = { juce::Colour(0xff3b82f6), juce::Colour(0xffec4899), juce::Colour(0xff10b981) };
 
         for (int i = 0; i < 3; ++i) {
-            bool isActive = processor.getAPVTS().getRawParameterValue(processor.getParamID(i, "active").getParamID())->load() > 0.5f;
-            if (!isActive) continue;
             bool isSelected = (i == selectedBand);
             g.setColour(bandColors[i].withAlpha(isSelected ? 0.15f : 0.05f)); g.fillRect(bandRects[i]);
             g.setColour(bandColors[i].withAlpha(isSelected ? 1.0f : 0.4f)); g.fillRect(bandRects[i].withHeight(isSelected ? 4.0f : 1.0f));
@@ -284,7 +279,10 @@ public:
                 
                 g.setFont(juce::Font("Inter", 12.0f, juce::Font::bold));
                 g.setColour(juce::Colours::white);
-                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].withHeight(20).withY(analyzerDisplay.getY() + grHeight + 5), juce::Justification::centredTop);
+                // Position text at the bottom of the reduction bar or at top if very small
+                float textY = analyzerDisplay.getY() + grHeight + 2;
+                if (textY > analyzerDisplay.getBottom() - 20) textY = analyzerDisplay.getBottom() - 20;
+                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].getX(), textY, bandRects[i].getWidth(), 20, juce::Justification::centredTop);
             }
         }
 
@@ -298,14 +296,7 @@ public:
         g.drawText(juce::String((int)cross1) + "Hz", x1 - 30, analyzerDisplay.getBottom() + 2, 60, 20, juce::Justification::centred);
         g.drawText(juce::String((int)cross2) + "Hz", x2 - 30, analyzerDisplay.getBottom() + 2, 60, 20, juce::Justification::centred);
 
-        // Band Frequencies
-        g.setFont(juce::Font("Inter", 10.0f, juce::Font::plain));
-        g.setColour(juce::Colours::white.withAlpha(0.4f));
-        g.drawText("20Hz-" + juce::String((int)cross1) + "Hz", bandRects[0].withY(analyzerDisplay.getY() + 10).withHeight(20), juce::Justification::centred);
-        g.drawText(juce::String((int)cross1) + "Hz-" + juce::String((int)cross2) + "Hz", bandRects[1].withY(analyzerDisplay.getY() + 10).withHeight(20), juce::Justification::centred);
-        g.drawText(juce::String((int)cross2) + "Hz-20kHz", bandRects[2].withY(analyzerDisplay.getY() + 10).withHeight(20), juce::Justification::centred);
 
-        g.setColour(juce::Colours::cyan);
         g.fillEllipse(x1 - 5, analyzerDisplay.getCentreY() - 5, 10, 10);
         g.fillEllipse(x2 - 5, analyzerDisplay.getCentreY() - 5, 10, 10);
 
@@ -328,16 +319,17 @@ public:
         
         auto labelArea = controlGrid.removeFromTop(25);
         auto w = labelArea.getWidth() / 4.0f;
-        juce::String labels[] = { "THRESHOLD", "RATIO", "ATTACK", "RELEASE" };
-        for (int i = 0; i < 4; ++i) g.drawText(labels[i], labelArea.getX() + i * w, labelArea.getY(), w, 20, juce::Justification::centred);
+        juce::String topLabels[] = { "THRESHOLD", "RATIO", "ATTACK", "RELEASE" };
+        for (int i = 0; i < 4; ++i) g.drawText(topLabels[i], labelArea.getX() + i * w, labelArea.getY(), w, 20, juce::Justification::centred);
         
-        controlGrid.removeFromTop(controlGrid.getHeight() * 0.5f); // Knobs area
+        controlGrid.removeFromTop(controlGrid.getHeight() * 0.52f); // Gap for knobs
         
         auto botLabelArea = controlGrid.removeFromTop(25);
         auto bW = botLabelArea.getWidth() / 5.0f;
         g.drawText("MAKEUP", botLabelArea.getX(), botLabelArea.getY(), bW, 20, juce::Justification::centred);
         g.drawText("KNEE", botLabelArea.getX() + bW, botLabelArea.getY(), bW, 20, juce::Justification::centred);
-        g.drawText("MODE/SIDECHAIN", botLabelArea.getX() + 2 * bW, botLabelArea.getY(), bW * 1.5f, 20, juce::Justification::centred);
+        g.drawText("DYNAMICS MODE & SC", botLabelArea.getX() + 2 * bW, botLabelArea.getY(), bW * 1.5f, 20, juce::Justification::centred);
+        g.drawText("TOGGLES", botLabelArea.getX() + 3.5f * bW, botLabelArea.getY(), bW * 1.5f, 20, juce::Justification::centred);
     }
 
     void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> r, bool isSidechain) {
@@ -442,33 +434,32 @@ public:
         
         area.removeFromTop(area.getHeight() * 0.58f); 
         auto controlsArea = area.reduced(20, 20); 
-        controlsArea.removeFromTop(40);
+        controlsArea.removeFromTop(35); // Reduced from 40 to give more space
         
-        auto topHalf = controlsArea.removeFromTop(controlsArea.getHeight() * 0.45f);
-        topHalf.removeFromTop(20); // Space for labels
+        auto topHalf = controlsArea.removeFromTop(controlsArea.getHeight() * 0.5f); // Increased from 0.45
+        topHalf.removeFromTop(15); // Reduced from 20 to give more space for labels
         
         auto knobW = topHalf.getWidth() / 4;
-        thresholdSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
-        ratioSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
-        attackSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
-        releaseSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
+        thresholdSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5)); // Reduced from 10 to make them larger
+        ratioSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5));
+        attackSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5));
+        releaseSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5));
         
         auto bottomHalf = controlsArea;
-        bottomHalf.removeFromTop(20); // Space for labels
+        bottomHalf.removeFromTop(15); // Reduced from 20 to give more space
         
         auto botKnobW = bottomHalf.getWidth() / 5;
-        makeupSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(10));
-        kneeSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(10));
+        makeupSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(5)); // matches others
+        kneeSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(5));
         
         auto midArea = bottomHalf.removeFromLeft(botKnobW * 1.5f).reduced(5);
         modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.5f).reduced(2));
         scSelector.setBounds(midArea.reduced(2));
-
+ 
         auto btnArea = bottomHalf.reduced(10, 0); 
-        float btnH = btnArea.getHeight() / 4.0f;
+        float btnH = btnArea.getHeight() / 2.5f; // Larger buttons, only 2 now
         soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
         muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
-        activeToggleButton.setBounds(btnArea.reduced(4));
     }
 
 private:
@@ -476,9 +467,9 @@ private:
     int selectedBand = 1; int draggingCrossover = 0;
     juce::Slider thresholdSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider, kneeSlider;
     juce::ComboBox modeSelector, scSelector;
-    juce::TextButton soloButton, muteButton, activeToggleButton, aiButton, presetButton;
+    juce::TextButton soloButton, muteButton, aiButton, presetButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thresholdAttachment, ratioAttachment, attackAttachment, releaseAttachment, makeupAttachment, kneeAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAttachment, muteAttachment, activeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAttachment, muteAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAttachment, scAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NovaMBEditor)
 };
@@ -546,7 +537,7 @@ void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void NovaMBAudioProcessor::releaseResources() {}
 
-void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+    void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
         float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
         float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
 
