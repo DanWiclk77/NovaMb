@@ -546,7 +546,7 @@ void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void NovaMBAudioProcessor::releaseResources() {}
 
-    void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
         float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
         float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
 
