@@ -3,6 +3,9 @@
 
 namespace NovaMB {
 
+enum class Mode { Compress, Expand };
+enum class SidechainSource { Internal, External };
+
 struct BandParameters {
     float frequencyLow = 20.0f;
     float frequencyHigh = 20000.0f;
@@ -13,7 +16,8 @@ struct BandParameters {
     float knee = 6.0f;
     float makeUpGain = 0.0f;
     float lookahead = 0.0f;
-    bool sidechainExternal = false;
+    Mode mode = Mode::Compress;
+    SidechainSource sidechainSource = SidechainSource::Internal;
     bool solo = false;
     bool mute = false;
     bool bypassed = false;
@@ -34,6 +38,7 @@ public:
 private:
     juce::dsp::LinkwitzRileyFilter<float> loPass, hiPass;
     juce::dsp::Compressor<float> compressor;
+    juce::dsp::Expander<float> expander;
     juce::dsp::Gain<float> gain;
     BandParameters parameters;
     float lastReduction = 0.0f;

@@ -120,7 +120,10 @@ public:
         };
 
         createButton(soloButton, "SOLO"); createButton(muteButton, "MUTE");
-        createButton(extSCButton, "EXT SC"); createButton(activeToggleButton, "ACTIVE");
+        createButton(activeToggleButton, "ACTIVE");
+
+        addAndMakeVisible(modeSelector); modeSelector.addItem("COMPRESS", 1); modeSelector.addItem("EXPAND", 2);
+        addAndMakeVisible(scSelector); scSelector.addItem("INTERNAL SC", 1); scSelector.addItem("EXTERNAL SC", 2);
 
         addAndMakeVisible(aiButton); aiButton.setButtonText("AI MAGIC");
         aiButton.onClick = [this] { runAIAssistant(); };
@@ -135,7 +138,8 @@ public:
         attackAttachment.reset(); releaseAttachment.reset();
         makeupAttachment.reset(); kneeAttachment.reset();
         soloAttachment.reset(); muteAttachment.reset();
-        extSCAttachment.reset(); activeAttachment.reset();
+        activeAttachment.reset();
+        modeAttachment.reset(); scAttachment.reset();
 
         auto getID = [this](juce::String name) { return processor.getParamID(selectedBand, name).getParamID(); };
 
@@ -147,8 +151,9 @@ public:
         kneeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(processor.getAPVTS(), getID("knee"), kneeSlider);
         soloAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("solo"), soloButton);
         muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("mute"), muteButton);
-        extSCAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("ext-sc"), extSCButton);
         activeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(processor.getAPVTS(), getID("active"), activeToggleButton);
+        modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.getAPVTS(), getID("mode"), modeSelector);
+        scAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(processor.getAPVTS(), getID("sc-source"), scSelector);
 
         repaint();
     }
@@ -273,8 +278,13 @@ public:
             g.setColour(bandColors[i].withAlpha(isSelected ? 1.0f : 0.4f)); g.fillRect(bandRects[i].withHeight(isSelected ? 4.0f : 1.0f));
             float gr = engine.getGainReduction(i);
             if (std::abs(gr) > 0.1f) {
-                 g.setColour(juce::Colours::red.withAlpha(0.3f));
-                 g.fillRect(bandRects[i].withHeight(std::fmin(std::abs(gr) * 10.0f, bandRects[i].getHeight())));
+                float grHeight = juce::jlimit(0.0f, analyzerDisplay.getHeight(), (std::abs(gr) / 24.0f) * analyzerDisplay.getHeight());
+                g.setColour(juce::Colours::red.withAlpha(0.4f));
+                g.fillRect(bandRects[i].withHeight(grHeight));
+                
+                g.setFont(juce::Font("Inter", 12.0f, juce::Font::bold));
+                g.setColour(juce::Colours::white);
+                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].withHeight(20).withY(grHeight + 5), juce::Justification::centredTop);
             }
         }
 
@@ -327,6 +337,7 @@ public:
         auto bW = botLabelArea.getWidth() / 5.0f;
         g.drawText("MAKEUP", botLabelArea.getX(), botLabelArea.getY(), bW, 20, juce::Justification::centred);
         g.drawText("KNEE", botLabelArea.getX() + bW, botLabelArea.getY(), bW, 20, juce::Justification::centred);
+        g.drawText("MODE/SIDECHAIN", botLabelArea.getX() + 2 * bW, botLabelArea.getY(), bW * 1.5f, 20, juce::Justification::centred);
     }
 
     void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> r, bool isSidechain) {
@@ -431,8 +442,8 @@ public:
         auto controlsArea = area.reduced(20, 20); 
         controlsArea.removeFromTop(40);
         
-        auto topHalf = controlsArea.removeFromTop(controlsArea.getHeight() * 0.5f);
-        topHalf.removeFromTop(25); // Space for labels
+        auto topHalf = controlsArea.removeFromTop(controlsArea.getHeight() * 0.45f);
+        topHalf.removeFromTop(20); // Space for labels
         
         auto knobW = topHalf.getWidth() / 4;
         thresholdSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
@@ -441,17 +452,20 @@ public:
         releaseSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(10));
         
         auto bottomHalf = controlsArea;
-        bottomHalf.removeFromTop(25); // Space for labels
+        bottomHalf.removeFromTop(20); // Space for labels
         
         auto botKnobW = bottomHalf.getWidth() / 5;
         makeupSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(10));
         kneeSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(10));
         
+        auto midArea = bottomHalf.removeFromLeft(botKnobW * 1.5f).reduced(5);
+        modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.5f).reduced(2));
+        scSelector.setBounds(midArea.reduced(2));
+
         auto btnArea = bottomHalf.reduced(10, 0); 
         float btnH = btnArea.getHeight() / 4.0f;
         soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
         muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
-        extSCButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
         activeToggleButton.setBounds(btnArea.reduced(4));
     }
 
@@ -459,9 +473,11 @@ private:
     NovaMBAudioProcessor& processor; NovaMB::MultibandEngine& engine; PlatinumLookAndFeel platinumLF;
     int selectedBand = 1; int draggingCrossover = 0;
     juce::Slider thresholdSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider, kneeSlider;
-    juce::TextButton soloButton, muteButton, extSCButton, activeToggleButton, aiButton, presetButton;
+    juce::ComboBox modeSelector, scSelector;
+    juce::TextButton soloButton, muteButton, activeToggleButton, aiButton, presetButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thresholdAttachment, ratioAttachment, attackAttachment, releaseAttachment, makeupAttachment, kneeAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAttachment, muteAttachment, extSCAttachment, activeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAttachment, muteAttachment, activeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAttachment, scAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NovaMBEditor)
 };
 
@@ -504,19 +520,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout NovaMBAudioProcessor::create
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("cross_low_mid", 1), "Low-Mid Crossover", juce::NormalisableRange<float>(20.0f, 1000.0f, 1.0f, 0.4f), 200.0f, juce::AudioParameterFloatAttributes().withLabel("Hz").withStringFromValueFunction(hzString)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("cross_mid_high", 1), "Mid-High Crossover", juce::NormalisableRange<float>(1000.0f, 20000.0f, 1.0f, 0.4f), 5000.0f, juce::AudioParameterFloatAttributes().withLabel("Hz").withStringFromValueFunction(hzString)));
 
-    for (int i = 0; i < 3; ++i) {
-        juce::String bandName = "Band " + juce::String(i + 1) + " ";
-        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "active"), bandName + "Active", true));
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), bandName + "Threshold", juce::NormalisableRange<float>(-60.0f, 0.0f, 0.1f), -20.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), bandName + "Ratio", juce::NormalisableRange<float>(1.0f, 20.0f, 0.1f), 4.0f, juce::AudioParameterFloatAttributes().withLabel(":1").withStringFromValueFunction(ratioString)));
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), bandName + "Attack", juce::NormalisableRange<float>(0.1f, 500.0f, 0.1f), 20.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), bandName + "Release", juce::NormalisableRange<float>(10.0f, 2000.0f, 1.0f), 100.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "makeup"), bandName + "Makeup Gain", juce::NormalisableRange<float>(0.0f, 24.0f, 0.1f), 0.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "knee"), bandName + "Knee", juce::NormalisableRange<float>(0.0f, 30.0f, 0.1f), 6.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
-        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "solo"), bandName + "Solo", false));
-        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "mute"), bandName + "Mute", false));
-        params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "ext-sc"), bandName + "External SC", false));
-    }
+        for (int i = 0; i < 3; ++i) {
+            juce::String bandName = "Band " + juce::String(i + 1) + " ";
+            params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "active"), bandName + "Active", true));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), bandName + "Threshold", juce::NormalisableRange<float>(-60.0f, 0.0f, 0.1f), -20.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), bandName + "Ratio", juce::NormalisableRange<float>(1.0f, 20.0f, 0.1f), 4.0f, juce::AudioParameterFloatAttributes().withLabel(":1").withStringFromValueFunction(ratioString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), bandName + "Attack", juce::NormalisableRange<float>(0.1f, 500.0f, 0.1f), 20.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), bandName + "Release", juce::NormalisableRange<float>(10.0f, 2000.0f, 1.0f), 100.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "makeup"), bandName + "Makeup Gain", juce::NormalisableRange<float>(0.0f, 24.0f, 0.1f), 0.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "knee"), bandName + "Knee", juce::NormalisableRange<float>(0.0f, 30.0f, 0.1f), 6.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+            params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "solo"), bandName + "Solo", false));
+            params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "mute"), bandName + "Mute", false));
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(getParamID(i, "mode"), bandName + "Mode", juce::StringArray("Compress", "Expand"), 0));
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(getParamID(i, "sc-source"), bandName + "SC Source", juce::StringArray("Internal", "External"), 0));
+        }
     return { params.begin(), params.end() };
 }
 
@@ -527,39 +544,44 @@ void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void NovaMBAudioProcessor::releaseResources() {}
 
-void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
-    float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
-    float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
+    void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+        float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
+        float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
 
-    for (int i = 0; i < 3; ++i) {
-        NovaMB::BandParameters b;
-        b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
-        b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
-        b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
-        b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
-        b.makeUpGain = apvts.getRawParameterValue(getParamID(i, "makeup").getParamID())->load();
-        b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
-        b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
-        b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
-        b.sidechainExternal = apvts.getRawParameterValue(getParamID(i, "ext-sc").getParamID())->load() > 0.5f;
-        b.active = apvts.getRawParameterValue(getParamID(i, "active").getParamID())->load() > 0.5f;
-        
-        if (i == 0) { b.frequencyLow = 20.0f; b.frequencyHigh = cross1; }
-        else if (i == 1) { b.frequencyLow = cross1; b.frequencyHigh = cross2; }
-        else { b.frequencyLow = cross2; b.frequencyHigh = 20000.0f; }
+        for (int i = 0; i < 3; ++i) {
+            NovaMB::BandParameters b;
+            b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
+            b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
+            b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
+            b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
+            b.makeUpGain = apvts.getRawParameterValue(getParamID(i, "makeup").getParamID())->load();
+            b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
+            b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
+            b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
+            b.active = apvts.getRawParameterValue(getParamID(i, "active").getParamID())->load() > 0.5f;
+            
+            int modeIdx = (int)apvts.getRawParameterValue(getParamID(i, "mode").getParamID())->load();
+            b.mode = (modeIdx == 1) ? NovaMB::Mode::Expand : NovaMB::Mode::Compress;
 
-        engine.updateBand(i, b);
+            int scIdx = (int)apvts.getRawParameterValue(getParamID(i, "sc-source").getParamID())->load();
+            b.sidechainSource = (scIdx == 1) ? NovaMB::SidechainSource::External : NovaMB::SidechainSource::Internal;
+
+            if (i == 0) { b.frequencyLow = 20.0f; b.frequencyHigh = cross1; }
+            else if (i == 1) { b.frequencyLow = cross1; b.frequencyHigh = cross2; }
+            else { b.frequencyLow = cross2; b.frequencyHigh = 20000.0f; }
+
+            engine.updateBand(i, b);
+        }
+
+        auto sidechainBus = getBus(true, 1);
+        if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
+            auto scBuffer = getBusBuffer(buffer, true, 1);
+            engine.process(buffer, scBuffer);
+        } else {
+            juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
+            engine.process(buffer, emptySC);
+        }
     }
-
-    auto sidechainBus = getBus(true, 1);
-    if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
-        auto scBuffer = getBusBuffer(buffer, true, 1);
-        engine.process(buffer, scBuffer);
-    } else {
-        juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
-        engine.process(buffer, emptySC);
-    }
-}
 
 juce::AudioProcessorEditor* NovaMBAudioProcessor::createEditor() {
     return new NovaMBEditor(*this, engine);
