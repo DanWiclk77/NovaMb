@@ -31,6 +31,7 @@ target_sources(NovaMB PRIVATE
 target_compile_definitions(NovaMB PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
 target_link_libraries(NovaMB PRIVATE

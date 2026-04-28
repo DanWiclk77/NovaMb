@@ -55,13 +55,26 @@ void MultibandEngine::prepare(const juce::dsp::ProcessSpec& spec) {
 }
 
 void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::AudioBuffer<float>& sidechainBuffer) {
-    // En una implementación real multibanda, sumamos los resultados de las bandas procesadas en paralelo
-    // o dividimos el buffer original.
+    juce::AudioBuffer<float> outputBuffer(buffer.getNumChannels(), buffer.getNumSamples());
+    outputBuffer.clear();
+
     for (auto& band : bands) {
-        juce::dsp::AudioBlock<float> block(buffer);
+        // Creamos una copia del input para cada banda para procesar en paralelo
+        juce::AudioBuffer<float> bandBuffer;
+        bandBuffer.makeCopyOf(buffer);
+        
+        juce::dsp::AudioBlock<float> block(bandBuffer);
         juce::dsp::ProcessContextReplacing<float> context(block);
+        
         band->process(context, sidechainBuffer);
+        
+        // Sumamos la banda procesada al output total
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel) {
+            outputBuffer.addFrom(channel, 0, bandBuffer.getReadPointer(channel), buffer.getNumSamples());
+        }
     }
+    
+    buffer.makeCopyOf(outputBuffer);
 }
 
 void MultibandEngine::updateBand(int index, const BandParameters& params) {
