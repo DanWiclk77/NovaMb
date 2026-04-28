@@ -25,6 +25,7 @@ juce_add_plugin(NovaMB
 target_sources(NovaMB PRIVATE
     Source/MultibandEngine.h
     Source/MultibandEngine.cpp
+    Source/PluginProcessor.h
     Source/PluginProcessor.cpp
 )
 

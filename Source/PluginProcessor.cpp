@@ -1,15 +1,14 @@
-#include <juce_audio_processors/juce_audio_processors.h>
+#include "PluginProcessor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
-#include "MultibandEngine.h"
 
 // --- Custom Editor Class (Geometric Balance UI - Platinum Version) ---
 class NovaMBEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
-    NovaMBEditor(juce::AudioProcessor& p, NovaMB::MultibandEngine& e) 
-        : AudioProcessorEditor(p), engine(e) 
+    NovaMBEditor(NovaMBAudioProcessor& p, NovaMB::MultibandEngine& e) 
+        : AudioProcessorEditor(p), processor(p), engine(e) 
     {
         setSize(850, 550);
-        startTimerHz(30); // 30fps for UI updates
+        startTimerHz(30); 
     }
 
     void paint(juce::Graphics& g) override {
@@ -33,9 +32,13 @@ public:
         g.setFont(juce::Font("Inter", 24.0f, juce::Font::bold));
         g.drawText("NOVAMB PRO", header.reduced(30, 0), juce::Justification::centredLeft);
         
+        // Drawing Status Indicators
+        g.setColour(juce::Colours::cyan.withAlpha(0.6f));
+        g.fillEllipse(header.getX() + 15, header.getY() + 15, 6.0f, 6.0f);
+        
         g.setFont(juce::Font("Inter", 11.0f, juce::Font::plain));
         g.setColour(juce::Colours::cyan.withAlpha(0.8f));
-        g.drawText("DIFFERENTIAL MULTIBAND ENGINE v2.5", header.reduced(30, 0), juce::Justification::centredRight);
+        g.drawText("DIFFERENTIAL MULTIBAND ENGINE v2.5.1 [PLATINUM]", header.reduced(30, 0), juce::Justification::centredRight);
 
         // --- Main Layout: Modular Panels ---
         auto body = area.reduced(24);
@@ -61,18 +64,14 @@ public:
         for (int i = 0; i < 3; ++i) {
             auto bandArea = analyzerContent.withWidth(bandWidth).withX(analyzerContent.getX() + i * bandWidth);
             
-            // Interaction Layer
             g.setColour(bandColors[i].withAlpha(0.08f));
             g.fillRect(bandArea.reduced(4, 0));
             
-            // Neon Border (Top)
             g.setColour(bandColors[i]);
             g.fillRect(bandArea.withHeight(2.0f));
             
-            // Gain Reduction Meter (Analog Style)
             float gr = engine.getGainReduction(i);
             if (gr < -0.1f) {
-                // Using explicit float math functions (SonicMeter requirement)
                 float grNormalized = std::fmin(std::abs(gr) / 20.0f, 1.0f);
                 float grHeight = grNormalized * bandArea.getHeight();
                 
@@ -84,11 +83,10 @@ public:
         }
 
         // Panel 2: Digital Metrics (Bottom)
-        body.removeFromTop(20); // Spacer
+        body.removeFromTop(20); 
         auto metricsArea = body;
         drawModularPanel(g, metricsArea, "DIGITAL CORE METRICS");
         
-        // Draw decorative technical details
         g.setColour(juce::Colours::white.withAlpha(0.1f));
         g.setFont(juce::Font("JetBrains Mono", 10.0f, juce::Font::plain));
         g.drawText("LOCK: PHASE-LINEAR | MODE: ANALOG-MODELLING", metricsArea.reduced(20, 10), juce::Justification::bottomRight);
@@ -122,82 +120,97 @@ public:
     }
 
 private:
+    NovaMBAudioProcessor& processor;
     NovaMB::MultibandEngine& engine;
 };
 
-// --- Main Processor Class ---
-class NovaMBAudioProcessor : public juce::AudioProcessor {
-public:
-     NovaMBAudioProcessor() 
-        : AudioProcessor(BusesProperties()
-            .withInput("Input", juce::AudioChannelSet::stereo(), true)
-            .withOutput("Output", juce::AudioChannelSet::stereo(), true)
-            .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
-          apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
-    {}
+// --- Processor Implementation ---
 
-    static ParameterID getParamID(int band, juce::String name) { return ParameterID(juce::String(band) + "_" + name, 1); }
+NovaMBAudioProcessor::NovaMBAudioProcessor() 
+    : AudioProcessor(BusesProperties()
+        .withInput("Input", juce::AudioChannelSet::stereo(), true)
+        .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+        .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
+      apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
+{
+}
 
-    static AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
-        std::vector<std::unique_ptr<RangedAudioParameter>> params;
-        for (int i = 0; i < 3; ++i) {
-            params.push_back(std::make_unique<AudioParameterFloat>(getParamID(i, "threshold"), "Threshold " + juce::String(i+1), -60.0f, 0.0f, -20.0f));
-            params.push_back(std::make_unique<AudioParameterFloat>(getParamID(i, "ratio"), "Ratio " + juce::String(i+1), 1.0f, 20.0f, 4.0f));
-            params.push_back(std::make_unique<AudioParameterFloat>(getParamID(i, "attack"), "Attack " + juce::String(i+1), 0.1f, 500.0f, 20.0f));
-            params.push_back(std::make_unique<AudioParameterFloat>(getParamID(i, "release"), "Release " + juce::String(i+1), 10.0f, 2000.0f, 100.0f));
-        }
-        return { params.begin(), params.end() };
+NovaMBAudioProcessor::~NovaMBAudioProcessor() {}
+
+const juce::String NovaMBAudioProcessor::getName() const { return "NovaMB"; }
+bool NovaMBAudioProcessor::acceptsMidi() const { return false; }
+bool NovaMBAudioProcessor::producesMidi() const { return false; }
+double NovaMBAudioProcessor::getTailLengthSeconds() const { return 0.0; }
+int NovaMBAudioProcessor::getNumPrograms() override { return 1; }
+int NovaMBAudioProcessor::getCurrentProgram() override { return 0; }
+void NovaMBAudioProcessor::setCurrentProgram(int) override {}
+const juce::String NovaMBAudioProcessor::getProgramName(int) override { return {}; }
+void NovaMBAudioProcessor::changeProgramName(int, const juce::String&) override {}
+
+juce::ParameterID NovaMBAudioProcessor::getParamID(int band, juce::String name) {
+    return juce::ParameterID(juce::String(band) + "_" + name, 1);
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout NovaMBAudioProcessor::createParameterLayout() {
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    for (int i = 0; i < 3; ++i) {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), "Threshold " + juce::String(i+1), -60.0f, 0.0f, -20.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), "Ratio " + juce::String(i+1), 1.0f, 20.0f, 4.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), "Attack " + juce::String(i+1), 0.1f, 500.0f, 20.0f));
+        params.push_back(std::make_unique<juce::AudioProcessorParameterGroup>(getParamID(i, "group"), "Band " + juce::String(i+1), "|", 
+            std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), "Release " + juce::String(i+1), 10.0f, 2000.0f, 100.0f)));
+    }
+    // Correction: actually let's just push them all normally for simplicity in this turn
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> finalParams;
+    for (int i = 0; i < 3; ++i) {
+        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), "Threshold " + juce::String(i+1), -60.0f, 0.0f, -20.0f));
+        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), "Ratio " + juce::String(i+1), 1.0f, 20.0f, 4.0f));
+        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), "Attack " + juce::String(i+1), 0.1f, 500.0f, 20.0f));
+        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), "Release " + juce::String(i+1), 10.0f, 2000.0f, 100.0f));
+    }
+    return { finalParams.begin(), finalParams.end() };
+}
+
+void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
+    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32)samplesPerBlock, (juce::uint32)getTotalNumOutputChannels() };
+    engine.prepare(spec);
+}
+
+void NovaMBAudioProcessor::releaseResources() {}
+
+void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+    for (int i = 0; i < 3; ++i) {
+        NovaMB::BandParameters b;
+        b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
+        b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
+        b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
+        b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
+        engine.updateBand(i, b);
     }
 
-    void prepareToPlay(double sampleRate, int samplesPerBlock) override {
-        juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32)samplesPerBlock, (juce::uint32)getTotalNumOutputChannels() };
-        engine.prepare(spec);
-    }
-    
-    void releaseResources() override {}
+    auto sidechainBuffer = getBusBuffer(buffer, true, 1);
+    engine.process(buffer, sidechainBuffer);
+}
 
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
-        // Sync parameters from APVTS to Engine
-        for (int i = 0; i < 3; ++i) {
-            NovaMB::BandParameters b;
-            b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
-            b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
-            b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
-            b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
-            engine.updateBand(i, b);
-        }
+juce::AudioProcessorEditor* NovaMBAudioProcessor::createEditor() {
+    return new NovaMBEditor(*this, engine);
+}
 
-        auto sidechainBuffer = getBusBuffer(buffer, true, 1);
-        engine.process(buffer, sidechainBuffer);
-    }
+bool NovaMBAudioProcessor::hasEditor() const { return true; }
 
-    juce::AudioProcessorEditor* createEditor() override { return new NovaMBEditor(*this, engine); }
-    bool hasEditor() const override { return true; }
-    const juce::String getName() const override { return "NovaMB"; }
-    bool acceptsMidi() const override { return false; }
-    bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
-    void changeProgramName(int, const juce::String&) override {}
-    
-    void getStateInformation(juce::MemoryBlock& destData) override {
-        auto state = apvts.copyState();
-        std::unique_ptr<juce::XmlElement> xml(state.createXml());
-        copyXmlToBinary(*xml, destData);
-    }
-    
-    void setStateInformation(const void* data, int sizeInBytes) override {
-        std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
-        if (xmlState != nullptr) apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
-    }
+void NovaMBAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
+}
 
-private:
-    NovaMB::MultibandEngine engine;
-    AudioProcessorValueTreeState apvts;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NovaMBAudioProcessor)
-};
+void NovaMBAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    if (xmlState != nullptr) apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+}
 
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new NovaMBAudioProcessor(); }
+// Entry point for JUCE plugin
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
+    return new NovaMBAudioProcessor();
+}
+
