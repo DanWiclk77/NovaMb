@@ -2,96 +2,123 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "MultibandEngine.h"
 
-// --- Custom Editor Class (Geometric Balance UI) ---
+// --- Custom Editor Class (Geometric Balance UI - Platinum Version) ---
 class NovaMBEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
     NovaMBEditor(juce::AudioProcessor& p, NovaMB::MultibandEngine& e) 
         : AudioProcessorEditor(p), engine(e) 
     {
-        setSize(800, 500);
+        setSize(850, 550);
         startTimerHz(30); // 30fps for UI updates
     }
 
     void paint(juce::Graphics& g) override {
-        // Aesthetic: Dark Carbon / Geometric Balance
-        auto bg = juce::Colour::fromFloatRGBA(0.06f, 0.07f, 0.08f, 1.0f);
-        g.fillAll(bg);
+        // Aesthetic: Platinum Dark Carbon Theme
+        auto bgPrimary = juce::Colour::fromFloatRGBA(0.04f, 0.05f, 0.06f, 1.0f);
+        auto bgSecondary = juce::Colour::fromFloatRGBA(0.08f, 0.09f, 0.11f, 1.0f);
+        g.fillAll(bgPrimary);
 
         auto area = getLocalBounds().toFloat();
         
-        // --- Sidebar (Glassmorphism) ---
+        // --- Sidebar (Modular Panel: Navigation) ---
         auto sidebar = area.removeFromLeft(70);
-        g.setColour(juce::Colour::fromFloatRGBA(0.12f, 0.13f, 0.15f, 0.8f));
+        g.setColour(bgSecondary);
         g.fillRect(sidebar);
-        g.setColour(juce::Colours::white.withAlpha(0.1f));
+        g.setColour(juce::Colours::white.withAlpha(0.05f));
         g.drawVerticalLine((int)sidebar.getRight(), 0, area.getBottom());
 
         // --- Header ---
-        auto header = area.removeFromTop(60);
+        auto header = area.removeFromTop(70);
         g.setColour(juce::Colours::white);
-        g.setFont(juce::Font(22.0f, juce::Font::bold));
+        g.setFont(juce::Font("Inter", 24.0f, juce::Font::bold));
         g.drawText("NOVAMB PRO", header.reduced(30, 0), juce::Justification::centredLeft);
         
-        g.setFont(12.0f);
-        g.setColour(juce::Colours::white.withAlpha(0.6f));
-        g.drawText("ULTRA-PRECISION MULTIBAND", header.reduced(30, 0), juce::Justification::centredRight);
+        g.setFont(juce::Font("Inter", 11.0f, juce::Font::plain));
+        g.setColour(juce::Colours::cyan.withAlpha(0.8f));
+        g.drawText("DIFFERENTIAL MULTIBAND ENGINE v2.5", header.reduced(30, 0), juce::Justification::centredRight);
 
-        // --- Main Area (Analyzer) ---
-        auto body = area.reduced(20);
-        auto analyzerArea = body.removeFromTop(body.getHeight() * 0.65f);
+        // --- Main Layout: Modular Panels ---
+        auto body = area.reduced(24);
         
-        // Background for Analyzer
-        g.setColour(juce::Colours::black.withAlpha(0.4f));
-        g.fillRoundedRectangle(analyzerArea, 10.0f);
+        // Panel 1: Spectral Analyzer (Top)
+        auto analyzerArea = body.removeFromTop(body.getHeight() * 0.60f);
+        drawModularPanel(g, analyzerArea, "REAL-TIME SPECTRAL ANALYSIS");
         
-        // Grids
-        g.setColour(juce::Colours::white.withAlpha(0.05f));
-        float gridStep = analyzerArea.getWidth() / 10.0f;
-        for (int i = 1; i < 10; ++i) {
-            g.drawVerticalLine((int)(analyzerArea.getX() + i * gridStep), analyzerArea.getY(), analyzerArea.getBottom());
-        }
+        auto analyzerContent = analyzerArea.reduced(10, 30);
+        g.setColour(juce::Colours::black.withAlpha(0.6f));
+        g.fillRoundedRectangle(analyzerContent, 6.0f);
+        
+        drawReferenceGrids(g, analyzerContent);
 
-        // Draw Band Overlays (Matching React colors)
+        // Draw Band Overlays
         const juce::Colour bandColors[] = { 
             juce::Colour(0xff3b82f6), // Blue
             juce::Colour(0xffec4899), // Pink
             juce::Colour(0xff10b981)  // Green
         };
 
-        float bandWidth = analyzerArea.getWidth() / 3.0f;
+        float bandWidth = analyzerContent.getWidth() / 3.0f;
         for (int i = 0; i < 3; ++i) {
-            auto bandArea = analyzerArea.withWidth(bandWidth).withX(analyzerArea.getX() + i * bandWidth);
+            auto bandArea = analyzerContent.withWidth(bandWidth).withX(analyzerContent.getX() + i * bandWidth);
             
-            // Aura / Fill
-            g.setColour(bandColors[i].withAlpha(0.1f));
-            g.fillRect(bandArea.reduced(2, 0));
+            // Interaction Layer
+            g.setColour(bandColors[i].withAlpha(0.08f));
+            g.fillRect(bandArea.reduced(4, 0));
             
-            // Top Indicator
+            // Neon Border (Top)
             g.setColour(bandColors[i]);
-            g.fillRect(bandArea.withHeight(3.0f));
+            g.fillRect(bandArea.withHeight(2.0f));
             
-            // Gain Reduction Indicator (Simulated)
-            float gr = engine.getGainReduction(i); // Assume we added this to engine
+            // Gain Reduction Meter (Analog Style)
+            float gr = engine.getGainReduction(i);
             if (gr < -0.1f) {
-                float grHeight = juce::jmin(std::abs(gr) * 5.0f, bandArea.getHeight());
-                g.setColour(juce::Colours::red.withAlpha(0.3f));
-                g.fillRect(bandArea.withHeight(grHeight).reduced(10, 0));
+                // Using explicit float math functions (SonicMeter requirement)
+                float grNormalized = std::fmin(std::abs(gr) / 20.0f, 1.0f);
+                float grHeight = grNormalized * bandArea.getHeight();
+                
+                juce::ColourGradient grGrad(juce::Colours::red.withAlpha(0.4f), bandArea.getX(), bandArea.getY(),
+                                           juce::Colours::red.withAlpha(0.1f), bandArea.getX(), bandArea.getBottom(), false);
+                g.setGradientFill(grGrad);
+                g.fillRect(bandArea.withHeight(grHeight).reduced(8, 0));
             }
         }
 
-        // --- Controls Panel (Glassmorphism Cards) ---
-        g.setColour(juce::Colour::fromFloatRGBA(0.15f, 0.16f, 0.18f, 0.5f));
-        g.fillRoundedRectangle(body, 10.0f);
-        g.setColour(juce::Colours::white.withAlpha(0.2f));
-        g.drawRoundedRectangle(body, 10.0f, 1.0f);
+        // Panel 2: Digital Metrics (Bottom)
+        body.removeFromTop(20); // Spacer
+        auto metricsArea = body;
+        drawModularPanel(g, metricsArea, "DIGITAL CORE METRICS");
         
-        g.setColour(juce::Colours::white);
-        g.setFont(14.0f);
-        g.drawText("DYNAMIC PARAMETERS", body.removeFromTop(40).reduced(20, 0), juce::Justification::centredLeft);
+        // Draw decorative technical details
+        g.setColour(juce::Colours::white.withAlpha(0.1f));
+        g.setFont(juce::Font("JetBrains Mono", 10.0f, juce::Font::plain));
+        g.drawText("LOCK: PHASE-LINEAR | MODE: ANALOG-MODELLING", metricsArea.reduced(20, 10), juce::Justification::bottomRight);
+    }
+
+    void drawModularPanel(juce::Graphics& g, juce::Rectangle<float> area, juce::String title) {
+        g.setColour(juce::Colour::fromFloatRGBA(0.12f, 0.13f, 0.15f, 0.4f));
+        g.fillRoundedRectangle(area, 8.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.15f));
+        g.drawRoundedRectangle(area, 8.0f, 1.0f);
+        
+        g.setColour(juce::Colours::white.withAlpha(0.4f));
+        g.setFont(juce::Font("Inter", 10.0f, juce::Font::bold));
+        g.drawText(title.toUpperCase(), area.removeFromTop(30).reduced(15, 0), juce::Justification::centredLeft);
+    }
+
+    void drawReferenceGrids(juce::Graphics& g, juce::Rectangle<float> area) {
+        g.setColour(juce::Colours::white.withAlpha(0.04f));
+        float stepX = area.getWidth() / 12.0f;
+        for (int i = 1; i < 12; ++i) {
+            g.drawVerticalLine((int)(area.getX() + i * stepX), area.getY(), area.getBottom());
+        }
+        float stepY = area.getHeight() / 6.0f;
+        for (int i = 1; i < 6; ++i) {
+            g.drawHorizontalLine((int)(area.getY() + i * stepY), area.getX(), area.getRight());
+        }
     }
 
     void timerCallback() override {
-        repaint(); // Update meters etc
+        repaint();
     }
 
 private:
@@ -127,6 +154,8 @@ public:
         engine.prepare(spec);
     }
     
+    void releaseResources() override {}
+
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override {
         // Sync parameters from APVTS to Engine
         for (int i = 0; i < 3; ++i) {

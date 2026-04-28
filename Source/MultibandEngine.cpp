@@ -42,9 +42,10 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     // Extremely simplified GR tracking (for UI feedback)
     if (std::abs(before) > 0.001f) {
         float currentTarget = juce::Decibels::gainToDecibels(std::abs(after) / std::abs(before));
-        lastReduction = lastReduction * 0.9f + currentTarget * 0.1f;
+        // Exponential smoothing for visuals
+        lastReduction = lastReduction * 0.92f + currentTarget * 0.08f;
     } else {
-        lastReduction *= 0.95f;
+        lastReduction *= 0.94f;
     }
     
     // 3. Gain
