@@ -54,19 +54,17 @@ public:
         auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
         
         bool isToggled = button.getToggleState();
-        auto baseColor = isToggled ? juce::Colours::cyan.withAlpha (0.4f) : juce::Colour (0xff1a1a1a);
+        auto baseColor = isToggled ? (button.getButtonText().containsIgnoreCase("MUTE") ? juce::Colours::red.withAlpha(0.6f) : juce::Colours::cyan.withAlpha(0.6f)) : juce::Colour(0xff1a1a1a);
         
         g.setColour (baseColor);
         g.fillRoundedRectangle (bounds, cornerSize);
         
-        g.setColour (isToggled ? juce::Colours::cyan : juce::Colours::white.withAlpha (0.1f));
+        g.setColour (isToggled ? juce::Colours::white : juce::Colours::white.withAlpha (0.1f));
         g.drawRoundedRectangle (bounds, cornerSize, 1.0f);
         
         if (isToggled) {
-            g.setColour(juce::Colours::cyan.withAlpha(0.3f));
-            g.drawRoundedRectangle(bounds.expanded(1.0f), cornerSize, 2.5f);
-            g.setColour(juce::Colours::cyan.withAlpha(0.15f));
-            g.drawRoundedRectangle(bounds.expanded(2.5f), cornerSize, 5.0f);
+            g.setColour(juce::Colours::cyan.withAlpha(0.4f));
+            g.drawRoundedRectangle(bounds.expanded(1.0f), cornerSize, 2.0f);
         }
     }
 
@@ -231,7 +229,7 @@ public:
     void paint(juce::Graphics& g) override {
         auto bg = juce::Colour(0xff0a0b0d); g.fillAll(bg);
         auto area = getLocalBounds().toFloat();
-        auto sidebar = area.removeFromLeft(80);
+        auto sidebar = area.removeFromLeft(100); 
         g.setColour(juce::Colour(0xff121316)); g.fillRect(sidebar);
         
         float pulse = std::sin((float)juce::Time::getMillisecondCounterHiRes() * 0.005f) * 0.2f + 0.8f;
@@ -246,7 +244,7 @@ public:
         g.drawText("GENETIC DYNAMICS ENGINE v3.5 | STUDIO EDITION", header.reduced(30, 0), juce::Justification::centredRight);
 
         auto body = area.reduced(24);
-        auto analyzerArea = body.removeFromTop(body.getHeight() * 0.53f);
+        auto analyzerArea = body.removeFromTop(body.getHeight() * 0.52f);
         drawPanel(g, analyzerArea, "PRECISION SPECTRAL ANALYZER");
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
         g.setColour(juce::Colours::black.withAlpha(0.8f)); g.fillRoundedRectangle(analyzerDisplay, 6.0f);
@@ -311,25 +309,28 @@ public:
         body.removeFromTop(20);
         auto controlsArea = body;
         drawPanel(g, controlsArea, "BAND " + juce::String(selectedBand + 1) + " PARAMETERS");
-        auto controlGrid = controlsArea.reduced(20, 20); 
-        controlGrid.removeFromTop(35);
         
-        g.setColour(juce::Colours::white.withAlpha(0.5f)); 
+        // Draw labels above knobs
         g.setFont(juce::Font("Inter", 10.0f, juce::Font::bold));
+        g.setColour(juce::Colours::white.withAlpha(0.7f));
         
-        auto labelArea = controlGrid.removeFromTop(25);
-        auto w = labelArea.getWidth() / 4.0f;
-        juce::String topLabels[] = { "THRESHOLD", "RATIO", "ATTACK", "RELEASE" };
-        for (int i = 0; i < 4; ++i) g.drawText(topLabels[i], labelArea.getX() + i * w, labelArea.getY(), w, 20, juce::Justification::centred);
-        
-        controlGrid.removeFromTop(controlGrid.getHeight() * 0.52f); // Gap for knobs
-        
-        auto botLabelArea = controlGrid.removeFromTop(25);
-        auto bW = botLabelArea.getWidth() / 5.0f;
-        g.drawText("MAKEUP", botLabelArea.getX(), botLabelArea.getY(), bW, 20, juce::Justification::centred);
-        g.drawText("KNEE", botLabelArea.getX() + bW, botLabelArea.getY(), bW, 20, juce::Justification::centred);
-        g.drawText("DYNAMICS MODE & SC", botLabelArea.getX() + 2 * bW, botLabelArea.getY(), bW * 1.5f, 20, juce::Justification::centred);
-        g.drawText("TOGGLES", botLabelArea.getX() + 3.5f * bW, botLabelArea.getY(), bW * 1.5f, 20, juce::Justification::centred);
+        auto drawLabelAbove = [&](juce::Component& c, juce::String label) {
+            auto b = c.getBounds().toFloat();
+            if (b.getWidth() > 0)
+                g.drawText(label, b.getX(), b.getY() - 18, b.getWidth(), 15, juce::Justification::centred);
+        };
+
+        drawLabelAbove(thresholdSlider, "THRESHOLD");
+        drawLabelAbove(ratioSlider, "RATIO");
+        drawLabelAbove(attackSlider, "ATTACK");
+        drawLabelAbove(releaseSlider, "RELEASE");
+        drawLabelAbove(makeupSlider, "MAKEUP");
+        drawLabelAbove(kneeSlider, "KNEE");
+
+        auto botArea = controlsArea.reduced(25, 25).withTrimmedTop(controlsArea.getHeight() * 0.72f);
+        auto bW = botArea.getWidth() / 5.0f;
+        g.drawText("DYNAMICS MODE & SC", botArea.getX() + 2 * bW, botArea.getY() - 18, bW * 1.5f, 15, juce::Justification::centred);
+        g.drawText("TOGGLES", botArea.getX() + 3.5f * bW, botArea.getY() - 18, bW * 1.5f, 15, juce::Justification::centred);
     }
 
     void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> r, bool isSidechain) {
@@ -349,12 +350,26 @@ public:
     }
 
     void drawGRCurve(juce::Graphics& g, juce::Rectangle<float> r) {
+        float cross1 = processor.getAPVTS().getRawParameterValue("cross_low_mid")->load();
+        float cross2 = processor.getAPVTS().getRawParameterValue("cross_mid_high")->load();
+        
+        auto freqToX = [&](float f) {
+            float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
+            return r.getX() + norm * r.getWidth();
+        };
+
+        float xPoints[] = { r.getX(), freqToX(cross1), freqToX(cross2), r.getRight() };
+        
         juce::Path p; p.startNewSubPath(r.getX(), r.getY());
         for (int i = 0; i < 3; ++i) {
-            float gr = engine.getGainReduction(i); float dip = juce::jlimit(0.0f, 1.0f, std::abs(gr) / 24.0f) * 60.0f;
-            float x1 = r.getX() + (i * r.getWidth() / 3.0f); float xM = x1 + r.getWidth() / 6.0f; float x2 = x1 + r.getWidth() / 3.0f;
-            p.cubicTo(xM - 20, r.getY(), xM - 10, r.getY() + dip, xM, r.getY() + dip);
-            p.cubicTo(xM + 10, r.getY() + dip, xM + 20, r.getY(), x2, r.getY());
+            float gr = engine.getGainReduction(i); 
+            float dip = juce::jlimit(0.0f, 1.0f, std::abs(gr) / 32.0f) * 60.0f;
+            float bX1 = xPoints[i];
+            float bX2 = xPoints[i+1];
+            float xM = bX1 + (bX2 - bX1) * 0.5f;
+            
+            p.cubicTo(xM - (bX2 - bX1) * 0.2f, r.getY(), xM - (bX2 - bX1) * 0.1f, r.getY() + dip, xM, r.getY() + dip);
+            p.cubicTo(xM + (bX2 - bX1) * 0.1f, r.getY() + dip, xM + (bX2 - bX1) * 0.2f, r.getY(), bX2, r.getY());
         }
         g.setColour(juce::Colours::red.withAlpha(0.7f)); g.strokePath(p, juce::PathStrokeType(2.0f));
     }
@@ -373,8 +388,8 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override {
         auto area = getLocalBounds().toFloat().reduced(24);
-        area.removeFromLeft(80); // Correct for sidebar
-        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.53f);
+        area.removeFromLeft(100); 
+        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.52f);
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
 
         if (analyzerDisplay.contains(e.position)) {
@@ -402,8 +417,8 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override {
         if (draggingCrossover == 0) return;
         auto area = getLocalBounds().toFloat().reduced(24);
-        area.removeFromLeft(80); // Correct for sidebar
-        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.53f);
+        area.removeFromLeft(100); 
+        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.52f);
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
 
         float relX = juce::jlimit(0.0f, 1.0f, (e.position.x - analyzerDisplay.getX()) / analyzerDisplay.getWidth());
@@ -429,37 +444,41 @@ public:
     void timerCallback() override { repaint(); }
 
     void resized() override {
-        auto area = getLocalBounds().reduced(24); area.removeFromLeft(56); 
-        presetButton.setBounds(10, 150, 60, 30); aiButton.setBounds(10, 200, 60, 30);
+        auto area = getLocalBounds().toFloat();
+        auto sidebar = area.removeFromLeft(100); 
         
-        area.removeFromTop(area.getHeight() * 0.58f); 
-        auto controlsArea = area.reduced(20, 20); 
-        controlsArea.removeFromTop(35); // Reduced from 40 to give more space
+        presetButton.setBounds(sidebar.reduced(15, 0).withHeight(35).withY(150).toNearestInt());
+        aiButton.setBounds(sidebar.reduced(15, 0).withHeight(35).withY(200).toNearestInt());
         
-        auto topHalf = controlsArea.removeFromTop(controlsArea.getHeight() * 0.5f); // Increased from 0.45
-        topHalf.removeFromTop(15); // Reduced from 20 to give more space for labels
+        auto body = area.reduced(24);
+        auto controlsArea = body.withTrimmedTop(body.getHeight() * 0.52f + 20); 
+        auto knobsArea = controlsArea.reduced(25, 30);
+        knobsArea.removeFromTop(30);
         
-        auto knobW = topHalf.getWidth() / 4;
-        thresholdSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5)); // Reduced from 10 to make them larger
-        ratioSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5));
-        attackSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5));
-        releaseSlider.setBounds(topHalf.removeFromLeft(knobW).reduced(5));
+        auto topRow = knobsArea.removeFromTop(knobsArea.getHeight() * 0.48f);
+        topRow.removeFromTop(20); 
         
-        auto bottomHalf = controlsArea;
-        bottomHalf.removeFromTop(15); // Reduced from 20 to give more space
+        auto knobW = topRow.getWidth() / 4.0f;
+        thresholdSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
+        ratioSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
+        attackSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
+        releaseSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
         
-        auto botKnobW = bottomHalf.getWidth() / 5;
-        makeupSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(5)); // matches others
-        kneeSlider.setBounds(bottomHalf.removeFromLeft(botKnobW).reduced(5));
+        auto botRow = knobsArea;
+        botRow.removeFromTop(25);
         
-        auto midArea = bottomHalf.removeFromLeft(botKnobW * 1.5f).reduced(5);
-        modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.5f).reduced(2));
-        scSelector.setBounds(midArea.reduced(2));
+        auto botKnobW = botRow.getWidth() / 5.0f;
+        makeupSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(2).toNearestInt());
+        kneeSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(2).toNearestInt());
+        
+        auto midArea = botRow.removeFromLeft(botKnobW * 1.5f).reduced(5);
+        modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.5f).reduced(2).toNearestInt());
+        scSelector.setBounds(midArea.reduced(2).toNearestInt());
  
-        auto btnArea = bottomHalf.reduced(10, 0); 
-        float btnH = btnArea.getHeight() / 2.5f; // Larger buttons, only 2 now
-        soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
-        muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(4));
+        auto btnArea = botRow.reduced(5, 0); 
+        float btnH = btnArea.getHeight() / 2.5f; 
+        soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(2).toNearestInt());
+        muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(2).toNearestInt());
     }
 
 private:
@@ -551,7 +570,7 @@ void NovaMBAudioProcessor::releaseResources() {}
             b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
             b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
             b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
-            b.active = apvts.getRawParameterValue(getParamID(i, "active").getParamID())->load() > 0.5f;
+            b.active = true; // Always active since button was removed
             
             int modeIdx = (int)apvts.getRawParameterValue(getParamID(i, "mode").getParamID())->load();
             b.mode = (modeIdx == 1) ? NovaMB::Mode::Expand : NovaMB::Mode::Compress;
