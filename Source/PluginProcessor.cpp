@@ -141,11 +141,11 @@ const juce::String NovaMBAudioProcessor::getName() const { return "NovaMB"; }
 bool NovaMBAudioProcessor::acceptsMidi() const { return false; }
 bool NovaMBAudioProcessor::producesMidi() const { return false; }
 double NovaMBAudioProcessor::getTailLengthSeconds() const { return 0.0; }
-int NovaMBAudioProcessor::getNumPrograms() override { return 1; }
-int NovaMBAudioProcessor::getCurrentProgram() override { return 0; }
-void NovaMBAudioProcessor::setCurrentProgram(int) override {}
-const juce::String NovaMBAudioProcessor::getProgramName(int) override { return {}; }
-void NovaMBAudioProcessor::changeProgramName(int, const juce::String&) override {}
+int NovaMBAudioProcessor::getNumPrograms() { return 1; }
+int NovaMBAudioProcessor::getCurrentProgram() { return 0; }
+void NovaMBAudioProcessor::setCurrentProgram(int) {}
+const juce::String NovaMBAudioProcessor::getProgramName(int) { return {}; }
+void NovaMBAudioProcessor::changeProgramName(int, const juce::String&) {}
 
 juce::ParameterID NovaMBAudioProcessor::getParamID(int band, juce::String name) {
     return juce::ParameterID(juce::String(band) + "_" + name, 1);
@@ -157,18 +157,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout NovaMBAudioProcessor::create
         params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), "Threshold " + juce::String(i+1), -60.0f, 0.0f, -20.0f));
         params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), "Ratio " + juce::String(i+1), 1.0f, 20.0f, 4.0f));
         params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), "Attack " + juce::String(i+1), 0.1f, 500.0f, 20.0f));
-        params.push_back(std::make_unique<juce::AudioProcessorParameterGroup>(getParamID(i, "group"), "Band " + juce::String(i+1), "|", 
-            std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), "Release " + juce::String(i+1), 10.0f, 2000.0f, 100.0f)));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), "Release " + juce::String(i+1), 10.0f, 2000.0f, 100.0f));
     }
-    // Correction: actually let's just push them all normally for simplicity in this turn
-    std::vector<std::unique_ptr<juce::RangedAudioParameter>> finalParams;
-    for (int i = 0; i < 3; ++i) {
-        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), "Threshold " + juce::String(i+1), -60.0f, 0.0f, -20.0f));
-        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), "Ratio " + juce::String(i+1), 1.0f, 20.0f, 4.0f));
-        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), "Attack " + juce::String(i+1), 0.1f, 500.0f, 20.0f));
-        finalParams.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), "Release " + juce::String(i+1), 10.0f, 2000.0f, 100.0f));
-    }
-    return { finalParams.begin(), finalParams.end() };
+    return { params.begin(), params.end() };
 }
 
 void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
