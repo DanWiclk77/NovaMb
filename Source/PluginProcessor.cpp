@@ -114,15 +114,47 @@ public:
 
     void runAIAssistant() {
         auto& apvts = processor.getAPVTS();
-        if (auto* pTHR = apvts.getParameter(processor.getParamID(selectedBand, "threshold").getParamID())) pTHR->setValueNotifyingHost(0.7f);
-        if (auto* pRAT = apvts.getParameter(processor.getParamID(selectedBand, "ratio").getParamID())) pRAT->setValueNotifyingHost(0.2f);
-        if (auto* pATK = apvts.getParameter(processor.getParamID(selectedBand, "attack").getParamID())) pATK->setValueNotifyingHost(0.1f);
+        // Set "Smart" Pro Defaults based on band
+        float targetThreshold = -18.0f;
+        float targetRatio = 4.0f;
+        float targetAttack = 30.0f;
+        
+        auto setParam = [&](juce::String name, float val) {
+            if (auto* p = apvts.getParameter(processor.getParamID(selectedBand, name).getParamID()))
+                p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(val));
+        };
+
+        setParam("threshold", targetThreshold);
+        setParam("ratio", targetRatio);
+        setParam("attack", targetAttack);
+        setParam("makeup", 2.0f); // Slight boost
+        setParam("knee", 6.0f);
     }
 
     void showPresetMenu() {
         juce::PopupMenu m;
-        m.addItem(1, "Clean Master"); m.addItem(2, "Punchy Drums"); m.addItem(3, "Silky Vocals");
-        m.showMenuAsync(juce::PopupMenu::Options(), [this](int result) { if (result > 0) {} });
+        m.addItem(1, "Clean Master"); 
+        m.addItem(2, "Punchy Drums"); 
+        m.addItem(3, "Silky Vocals");
+        
+        m.showMenuAsync(juce::PopupMenu::Options(), [this](int result) {
+            if (result == 0) return;
+            
+            auto& apvts = processor.getAPVTS();
+            auto setAllBands = [&](float t, float r, float a, float rel) {
+                for (int i = 0; i < 3; ++i) {
+                    auto setP = [&](juce::String n, float v) {
+                        if (auto* p = apvts.getParameter(processor.getParamID(i, n).getParamID()))
+                            p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(v));
+                    };
+                    setP("threshold", t); setP("ratio", r); setP("attack", a); setP("release", rel);
+                }
+            };
+
+            if (result == 1) setAllBands(-12.0f, 2.0f, 50.0f, 200.0f);
+            else if (result == 2) setAllBands(-18.0f, 6.0f, 10.0f, 50.0f);
+            else if (result == 3) setAllBands(-15.0f, 3.0f, 40.0f, 150.0f);
+        });
     }
 
     void paint(juce::Graphics& g) override {
@@ -241,24 +273,40 @@ public:
     }
 
     void mouseDown(const juce::MouseEvent& e) override {
-        auto analyzerArea = getLocalBounds().reduced(24).removeFromTop(getHeight() * 0.40f);
+        auto analyzerArea = getLocalBounds().toFloat().reduced(24).removeFromTop(getHeight() * 0.40f);
         if (analyzerArea.contains(e.position)) {
             float cross1 = processor.getAPVTS().getRawParameterValue("cross_low_mid")->load();
             float cross2 = processor.getAPVTS().getRawParameterValue("cross_mid_high")->load();
-            auto freqToX = [&](float f) { return analyzerArea.getX() + (std::log10(f/20.0f)/std::log10(1000.0f)) * analyzerArea.getWidth(); }; // Approx
-            if (std::abs(e.position.x - freqToX(cross1)) < 20) draggingCrossover = 1;
-            else if (std::abs(e.position.x - freqToX(cross2)) < 20) draggingCrossover = 2;
-            else selectBand(e.position.x < analyzerArea.getCentreX() ? 0 : (e.position.x < analyzerArea.getRight() - 100 ? 1 : 2));
+            
+            auto freqToX = [&](float f) {
+                float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
+                return analyzerArea.getX() + norm * analyzerArea.getWidth();
+            };
+
+            if (std::abs(e.position.x - freqToX(cross1)) < 15.0f) draggingCrossover = 1;
+            else if (std::abs(e.position.x - freqToX(cross2)) < 15.0f) draggingCrossover = 2;
+            else {
+                float relX = (e.position.x - analyzerArea.getX()) / analyzerArea.getWidth();
+                float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
+                if (f < cross1) selectBand(0);
+                else if (f < cross2) selectBand(1);
+                else selectBand(2);
+                draggingCrossover = 0;
+            }
         }
     }
 
     void mouseDrag(const juce::MouseEvent& e) override {
         if (draggingCrossover == 0) return;
-        auto analyzerArea = getLocalBounds().reduced(24).removeFromTop(getHeight() * 0.40f);
+        auto analyzerArea = getLocalBounds().toFloat().reduced(24).removeFromTop(getHeight() * 0.40f);
         float relX = juce::jlimit(0.0f, 1.0f, (e.position.x - analyzerArea.getX()) / analyzerArea.getWidth());
-        float f = std::pow(10.0f, std::log10(20.0f) + relX * 3.0f); // Simplistic log
-        if (draggingCrossover == 1) processor.getAPVTS().getParameter("cross_low_mid")->setValueNotifyingHost(processor.getAPVTS().getParameter("cross_low_mid")->getNormalisableRange().convertTo0to1(f));
-        else if (draggingCrossover == 2) processor.getAPVTS().getParameter("cross_mid_high")->setValueNotifyingHost(processor.getAPVTS().getParameter("cross_mid_high")->getNormalisableRange().convertTo0to1(f));
+        float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
+        
+        auto& crossLowMid = *processor.getAPVTS().getParameter("cross_low_mid");
+        auto& crossMidHigh = *processor.getAPVTS().getParameter("cross_mid_high");
+
+        if (draggingCrossover == 1) crossLowMid.setValueNotifyingHost(crossLowMid.getNormalisableRange().convertTo0to1(f));
+        else if (draggingCrossover == 2) crossMidHigh.setValueNotifyingHost(crossMidHigh.getNormalisableRange().convertTo0to1(f));
     }
 
     void mouseUp(const juce::MouseEvent&) override { draggingCrossover = 0; }
