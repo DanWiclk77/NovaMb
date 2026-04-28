@@ -133,8 +133,9 @@ public:
         g.setColour(juce::Colour(0xff121316));
         g.fillRect(sidebar);
         
-        // Logo Accent
-        g.setColour(juce::Colours::cyan);
+        // Logo Accent - Dynamic Pulse
+        float pulse = std::sin(juce::Timer::getRawElapsedTime() * 4.0f) * 0.2f + 0.8f;
+        g.setColour(juce::Colours::cyan.withAlpha(pulse));
         g.fillEllipse(sidebar.getCentreX() - 15, 30, 30, 30);
         
         // Header
@@ -145,7 +146,7 @@ public:
         
         g.setFont(juce::Font("Inter", 11.0f, juce::Font::plain));
         g.setColour(juce::Colours::white.withAlpha(0.6f));
-        g.drawText("DIFFERENTIAL ENGINE v3.0 | MASTER PLATINUM", header.reduced(30, 0), juce::Justification::centredRight);
+        g.drawText("DIFFERENTIAL ENGINE v3.1 | MASTER PLATINUM", header.reduced(30, 0), juce::Justification::centredRight);
 
         // --- Spectral Analyzer ---
         auto body = area.reduced(24);

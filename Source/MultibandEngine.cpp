@@ -38,22 +38,26 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     // 2. Compress
     float before = 0.0f;
     for (size_t ch = 0; ch < context.getInputBlock().getNumChannels(); ++ch)
-        before += context.getInputBlock().getRMSLevel(ch);
+    {
+        auto* chPtr = context.getInputBlock().getChannelPointer(ch);
+        float sum = 0.0f;
+        for (size_t s = 0; s < context.getInputBlock().getNumSamples(); ++s)
+            sum += chPtr[s] * chPtr[s];
+        before += std::sqrt(sum / (float)context.getInputBlock().getNumSamples());
+    }
     before /= (float)context.getInputBlock().getNumChannels();
 
-    if (useSidechain && sidechainBuffer.getNumChannels() > 0) {
-        // Simple sidechain implementation: use sidechain RMS to drive compression
-        // In a real pro plugin, we'd use a dedicated sidechain-capable compressor but juce::dsp::Compressor is internal detection only
-        // Standard practice for sidechain in JUCE dsp::Compressor is to use a separate detection path if needed.
-        // For now, let's just use internal detection as juce::dsp::Compressor doesn't expose a sidechain input easily.
-        compressor.process(context);
-    } else {
-        compressor.process(context);
-    }
+    compressor.process(context);
     
     float after = 0.0f;
     for (size_t ch = 0; ch < context.getOutputBlock().getNumChannels(); ++ch)
-        after += context.getOutputBlock().getRMSLevel(ch);
+    {
+        auto* chPtr = context.getOutputBlock().getChannelPointer(ch);
+        float sum = 0.0f;
+        for (size_t s = 0; s < context.getOutputBlock().getNumSamples(); ++s)
+            sum += chPtr[s] * chPtr[s];
+        after += std::sqrt(sum / (float)context.getOutputBlock().getNumSamples());
+    }
     after /= (float)context.getOutputBlock().getNumChannels();
     
     if (before > 0.00001f) {
