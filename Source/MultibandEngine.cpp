@@ -144,6 +144,7 @@ MultibandEngine::MultibandEngine()
 
 void MultibandEngine::prepare(const juce::dsp::ProcessSpec& spec) {
     currentSpec = spec;
+    outputBuffer.setSize((int)spec.numChannels, (int)spec.maximumBlockSize);
     for (auto& band : bands) {
         band->prepare(spec);
     }
@@ -164,16 +165,16 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         }
     }
 
-    juce::AudioBuffer<float> outputBuffer(buffer.getNumChannels(), buffer.getNumSamples());
     outputBuffer.clear();
+    const int numSamples = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
 
     bool anySolo = false;
     for (auto& band : bands) if (band->isSolo()) { anySolo = true; break; }
 
     for (int i = 0; i < (int)bands.size(); ++i) {
         auto& band = bands[i];
-        if (band->isMute() || (anySolo && !band->isSolo()) || !band->isActive()) continue;
-
+        
         juce::AudioBuffer<float> bandBuffer;
         bandBuffer.makeCopyOf(buffer);
         
@@ -182,12 +183,16 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         
         band->process(context, sidechainBuffer);
         
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
-            outputBuffer.addFrom(ch, 0, bandBuffer, ch, 0, buffer.getNumSamples());
+        bool isAudible = !band->isMute() && (!anySolo || band->isSolo()) && band->isActive();
+        
+        if (isAudible) {
+            for (int ch = 0; ch < numChannels; ++ch) {
+                outputBuffer.addFrom(ch, 0, bandBuffer, ch, 0, numSamples);
+            }
         }
     }
     
-    buffer.makeCopyOf(outputBuffer);
+    buffer.makeCopyOf(outputBuffer, true);
 }
 
 void MultibandEngine::pushNextSampleIntoFifo(float sample, float* f, int& idx, bool& ready) {

@@ -123,6 +123,8 @@ private:
 
     std::vector<std::unique_ptr<CompressorBand>> bands;
     juce::dsp::ProcessSpec currentSpec;
+    
+    juce::AudioBuffer<float> outputBuffer;
 
     // FFT members
     static constexpr int fftOrder = 11;

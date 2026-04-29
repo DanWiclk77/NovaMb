@@ -51,37 +51,44 @@ public:
                                bool shouldDrawButtonAsDown) override
     {
         auto cornerSize = 4.0f;
-        auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
+        auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
         
         bool isToggled = button.getToggleState();
-        auto baseColor = isToggled ? (button.getButtonText().containsIgnoreCase("MUTE") ? juce::Colours::red.withAlpha(0.6f) : juce::Colours::cyan.withAlpha(0.6f)) : juce::Colour(0xff1a1a1a);
+        juce::Colour baseColor;
         
-        g.setColour (baseColor);
+        if (button.getButtonText().containsIgnoreCase("MUTE")) {
+            baseColor = isToggled ? juce::Colours::red.withAlpha(0.7f) : juce::Colour(0xff1a1c21);
+        } else if (button.getButtonText().containsIgnoreCase("SOLO")) {
+            baseColor = isToggled ? juce::Colours::cyan.withAlpha(0.7f) : juce::Colour(0xff1a1c21);
+        } else {
+            baseColor = isToggled ? juce::Colours::white.withAlpha(0.18f) : juce::Colour(0xff1a1c21);
+        }
+        
+        // Add subtle vertical gradient for "metal" feel
+        juce::ColourGradient grad(baseColor.brighter(0.1f), 0, bounds.getY(),
+                                 baseColor.darker(0.1f), 0, bounds.getBottom(), false);
+        g.setGradientFill(grad);
         g.fillRoundedRectangle (bounds, cornerSize);
         
-        g.setColour (isToggled ? juce::Colours::white : juce::Colours::white.withAlpha (0.1f));
-        g.drawRoundedRectangle (bounds, cornerSize, 1.0f);
-        
         if (isToggled) {
-            g.setColour(juce::Colours::cyan.withAlpha(0.4f));
-            g.drawRoundedRectangle(bounds.expanded(1.0f), cornerSize, 2.0f);
+            g.setColour(juce::Colours::white.withAlpha(0.15f));
+            g.fillRoundedRectangle(bounds, cornerSize);
+            
+            auto glowColor = button.getButtonText().containsIgnoreCase("MUTE") ? juce::Colours::red : juce::Colours::cyan;
+            g.setColour(glowColor.withAlpha(0.4f));
+            g.drawRoundedRectangle(bounds.expanded(1.0f), cornerSize, 1.8f);
         }
+
+        g.setColour (isToggled ? juce::Colours::white.withAlpha(0.9f) : juce::Colours::white.withAlpha(0.15f));
+        g.drawRoundedRectangle (bounds, cornerSize, 1.3f);
     }
 
     void drawButtonText (juce::Graphics& g, juce::TextButton& button,
                          bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
     {
-        juce::Font font (getTextButtonFont (button, button.getHeight()));
-        g.setFont (font);
+        g.setFont (juce::Font("Inter", 12.0f, juce::Font::bold));
         g.setColour (button.getToggleState() ? juce::Colours::white : juce::Colours::white.withAlpha (0.6f));
-
-        auto yIndent = juce::jmin (4.0f, (float) button.getHeight() * 0.3f);
-        auto cornerSize = juce::jmin (button.getWidth(), button.getHeight()) / 2.0f;
-
-        auto fontHeight = font.getHeight();
-        auto textBounds = button.getLocalBounds().withTrimmedTop ((button.getHeight() - fontHeight) / 2).withHeight (fontHeight);
-        
-        g.drawText (button.getButtonText(), textBounds, juce::Justification::centred, true);
+        g.drawText (button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, true);
     }
 };
 
@@ -232,9 +239,13 @@ public:
         auto sidebar = area.removeFromLeft(100); 
         g.setColour(juce::Colour(0xff121316)); g.fillRect(sidebar);
         
-        float pulse = std::sin((float)juce::Time::getMillisecondCounterHiRes() * 0.005f) * 0.2f + 0.8f;
+        float pulse = std::sin((float)juce::Time::getMillisecondCounterHiRes() * 0.006f) * 0.35f + 0.65f;
         g.setColour(juce::Colours::cyan.withAlpha(pulse));
         g.fillEllipse(sidebar.getCentreX() - 15, 30, 30, 30);
+        
+        // Add a "core" to the sidebar icon
+        g.setColour(juce::Colours::white.withAlpha(0.8f));
+        g.fillEllipse(sidebar.getCentreX() - 4, 41, 8, 8);
         
         auto header = area.removeFromTop(80);
         g.setColour(juce::Colours::white); g.setFont(juce::Font("Inter", 32.0f, juce::Font::bold));
@@ -267,20 +278,31 @@ public:
 
         for (int i = 0; i < 3; ++i) {
             bool isSelected = (i == selectedBand);
-            g.setColour(bandColors[i].withAlpha(isSelected ? 0.15f : 0.05f)); g.fillRect(bandRects[i]);
-            g.setColour(bandColors[i].withAlpha(isSelected ? 1.0f : 0.4f)); g.fillRect(bandRects[i].withHeight(isSelected ? 4.0f : 1.0f));
+            g.setColour(bandColors[i].withAlpha(isSelected ? 0.25f : 0.08f)); g.fillRect(bandRects[i]);
+            g.setColour(bandColors[i].withAlpha(isSelected ? 1.0f : 0.4f)); 
+            g.fillRect(bandRects[i].withHeight(isSelected ? 4.0f : 1.2f));
+            
             float gr = engine.getGainReduction(i);
             if (std::abs(gr) > 0.1f) {
-                float grHeight = juce::jlimit(0.0f, analyzerDisplay.getHeight(), (std::abs(gr) / 24.0f) * analyzerDisplay.getHeight());
-                g.setColour(juce::Colours::red.withAlpha(0.4f));
-                g.fillRect(bandRects[i].withHeight(grHeight));
+                float grHeight = juce::jlimit(0.0f, analyzerDisplay.getHeight(), (std::abs(gr) / 32.0f) * analyzerDisplay.getHeight());
                 
+                // Narrow red GR bar centered in the band
+                auto grBar = bandRects[i].withWidth(12.0f).withCentreX(bandRects[i].getCentreX()).withHeight(grHeight);
+                
+                juce::Colour grColor = juce::Colours::red.withAlpha(0.7f);
+                g.setColour(grColor);
+                g.fillRect(grBar);
+                
+                juce::ColourGradient grad(grColor, grBar.getX(), grBar.getY(),
+                                         juce::Colours::transparentBlack, grBar.getX(), grBar.getBottom(), false);
+                g.setGradientFill(grad);
+                g.fillRect(grBar);
+
                 g.setFont(juce::Font("Inter", 12.0f, juce::Font::bold));
                 g.setColour(juce::Colours::white);
-                // Position text at the bottom of the reduction bar or at top if very small
-                float textY = analyzerDisplay.getY() + grHeight + 2;
-                if (textY > analyzerDisplay.getBottom() - 20) textY = analyzerDisplay.getBottom() - 20;
-                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].getX(), textY, bandRects[i].getWidth(), 20, juce::Justification::centredTop);
+                float textY = analyzerDisplay.getY() + grHeight + 4;
+                if (textY > analyzerDisplay.getBottom() - 25) textY = analyzerDisplay.getBottom() - 25;
+                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].reduced(2,0).withY((int)textY).withHeight(20), juce::Justification::centredTop);
             }
         }
 
@@ -288,13 +310,13 @@ public:
         g.drawVerticalLine((int)x1, analyzerDisplay.getY(), analyzerDisplay.getBottom());
         g.drawVerticalLine((int)x2, analyzerDisplay.getY(), analyzerDisplay.getBottom());
         
-        // Frequency Labels
-        g.setFont(juce::Font("Inter", 11.0f, juce::Font::bold));
-        g.setColour(juce::Colours::white.withAlpha(0.7f));
-        g.drawText(juce::String((int)cross1) + "Hz", x1 - 30, analyzerDisplay.getBottom() + 2, 60, 20, juce::Justification::centred);
-        g.drawText(juce::String((int)cross2) + "Hz", x2 - 30, analyzerDisplay.getBottom() + 2, 60, 20, juce::Justification::centred);
+        // Frequency Labels and circles
+        g.setFont(juce::Font("Inter", 11.5f, juce::Font::bold));
+        g.setColour(juce::Colours::white.withAlpha(0.8f));
+        g.drawText(juce::String((int)cross1) + "Hz", (int)x1 - 35, (int)analyzerDisplay.getBottom() + 3, 70, 20, juce::Justification::centred);
+        g.drawText(juce::String((int)cross2) + "Hz", (int)x2 - 35, (int)analyzerDisplay.getBottom() + 3, 70, 20, juce::Justification::centred);
 
-
+        g.setColour(juce::Colours::white.withAlpha(0.9f));
         g.fillEllipse(x1 - 5, analyzerDisplay.getCentreY() - 5, 10, 10);
         g.fillEllipse(x2 - 5, analyzerDisplay.getCentreY() - 5, 10, 10);
 
@@ -311,13 +333,13 @@ public:
         drawPanel(g, controlsArea, "BAND " + juce::String(selectedBand + 1) + " PARAMETERS");
         
         // Draw labels above knobs
-        g.setFont(juce::Font("Inter", 10.0f, juce::Font::bold));
-        g.setColour(juce::Colours::white.withAlpha(0.7f));
+        g.setFont(juce::Font("Inter", 10.5f, juce::Font::bold));
+        g.setColour(juce::Colours::white.withAlpha(0.85f));
         
         auto drawLabelAbove = [&](juce::Component& c, juce::String label) {
             auto b = c.getBounds().toFloat();
             if (b.getWidth() > 0)
-                g.drawText(label, b.getX(), b.getY() - 18, b.getWidth(), 15, juce::Justification::centred);
+                g.drawText(label, b.getX(), b.getY() - 22, b.getWidth(), 15, juce::Justification::centred);
         };
 
         drawLabelAbove(thresholdSlider, "THRESHOLD");
@@ -342,11 +364,25 @@ public:
             float level = juce::jlimit(0.0f, 1.0f, juce::Decibels::gainToDecibels(data[i] + 0.0001f) / 100.0f + 1.0f);
             p.lineTo(x, r.getBottom() - (level * r.getHeight()));
         }
-        p.lineTo(r.getRight(), r.getBottom()); p.closeSubPath();
-        g.setColour(isSidechain ? juce::Colours::orange.withAlpha(0.2f) : juce::Colours::cyan.withAlpha(0.25f));
-        g.fillPath(p);
-        g.setColour(isSidechain ? juce::Colours::orange.withAlpha(0.6f) : juce::Colours::cyan.withAlpha(0.7f));
-        g.strokePath(p, juce::PathStrokeType(1.0f));
+        // Smooth out the bottom
+        p.lineTo(r.getRight(), r.getBottom());
+        p.lineTo(r.getX(), r.getBottom());
+        p.closeSubPath();
+
+        if (isSidechain) {
+            g.setColour(juce::Colours::orange.withAlpha(0.15f));
+            g.fillPath(p);
+            g.setColour(juce::Colours::orange.withAlpha(0.5f));
+            g.strokePath(p, juce::PathStrokeType(1.0f));
+        } else {
+            // Main spectrum with gradient
+            juce::ColourGradient specGrad(juce::Colours::cyan.withAlpha(0.2f), 0, r.getY(),
+                                         juce::Colours::cyan.withAlpha(0.05f), 0, r.getBottom(), false);
+            g.setGradientFill(specGrad);
+            g.fillPath(p);
+            g.setColour(juce::Colours::cyan.withAlpha(0.7f));
+            g.strokePath(p, juce::PathStrokeType(1.2f));
+        }
     }
 
     void drawGRCurve(juce::Graphics& g, juce::Rectangle<float> r) {
@@ -382,8 +418,24 @@ public:
     }
 
     void drawGrids(juce::Graphics& g, juce::Rectangle<float> r) {
-        g.setColour(juce::Colours::white.withAlpha(0.03f));
-        for (int i = 1; i < 12; ++i) g.drawVerticalLine((int)(r.getX() + i * r.getWidth() / 12.0f), r.getY(), r.getBottom());
+        g.setColour(juce::Colours::white.withAlpha(0.04f));
+        
+        auto freqToX = [&](float f) {
+            float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
+            return r.getX() + norm * r.getWidth();
+        };
+
+        float freqs[] = { 100, 200, 500, 1000, 2000, 5000, 10000 };
+        for (auto f : freqs) {
+            float x = freqToX(f);
+            g.drawVerticalLine((int)x, r.getY(), r.getBottom());
+        }
+        
+        g.setColour(juce::Colours::white.withAlpha(0.15f));
+        g.setFont(juce::Font("Inter", 9.0f, juce::Font::plain));
+        g.drawText("100Hz", (int)freqToX(100) - 20, (int)r.getBottom() - 15, 40, 12, juce::Justification::centred);
+        g.drawText("1kHz", (int)freqToX(1000) - 20, (int)r.getBottom() - 15, 40, 12, juce::Justification::centred);
+        g.drawText("10kHz", (int)freqToX(10000) - 20, (int)r.getBottom() - 15, 40, 12, juce::Justification::centred);
     }
 
     void mouseDown(const juce::MouseEvent& e) override {
@@ -452,33 +504,33 @@ public:
         
         auto body = area.reduced(24);
         auto controlsArea = body.withTrimmedTop(body.getHeight() * 0.52f + 20); 
-        auto knobsArea = controlsArea.reduced(25, 30);
-        knobsArea.removeFromTop(30);
+        auto knobsArea = controlsArea.reduced(20, 25);
+        knobsArea.removeFromTop(40); // extra space for titles
         
         auto topRow = knobsArea.removeFromTop(knobsArea.getHeight() * 0.48f);
-        topRow.removeFromTop(20); 
+        topRow.removeFromTop(25); // space for labels
         
         auto knobW = topRow.getWidth() / 4.0f;
-        thresholdSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
-        ratioSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
-        attackSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
-        releaseSlider.setBounds(topRow.removeFromLeft(knobW).reduced(2).toNearestInt());
+        thresholdSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        ratioSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        attackSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        releaseSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
         
         auto botRow = knobsArea;
-        botRow.removeFromTop(25);
+        botRow.removeFromTop(30); // space for labels
         
         auto botKnobW = botRow.getWidth() / 5.0f;
-        makeupSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(2).toNearestInt());
-        kneeSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(2).toNearestInt());
+        makeupSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(4).toNearestInt());
+        kneeSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(4).toNearestInt());
         
         auto midArea = botRow.removeFromLeft(botKnobW * 1.5f).reduced(5);
-        modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.5f).reduced(2).toNearestInt());
-        scSelector.setBounds(midArea.reduced(2).toNearestInt());
+        modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.54f).reduced(2, 4).toNearestInt());
+        scSelector.setBounds(midArea.reduced(2, 4).toNearestInt());
  
-        auto btnArea = botRow.reduced(5, 0); 
-        float btnH = btnArea.getHeight() / 2.5f; 
-        soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(2).toNearestInt());
-        muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(2).toNearestInt());
+        auto btnArea = botRow.reduced(10, 5); 
+        float btnH = btnArea.getHeight() / 2.0f; 
+        soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(4, 2).toNearestInt());
+        muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(4, 2).toNearestInt());
     }
 
 private:
