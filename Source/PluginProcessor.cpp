@@ -287,14 +287,14 @@ public:
                 float grHeight = juce::jlimit(0.0f, analyzerDisplay.getHeight(), (std::abs(gr) / 32.0f) * analyzerDisplay.getHeight());
                 
                 // Narrow red GR bar centered in the band
-                auto grBar = bandRects[i].withWidth(12.0f).withCentreX(bandRects[i].getCentreX()).withHeight(grHeight);
+                auto grBar = bandRects[i].withWidth(12.0f).withX(bandRects[i].getCentreX() - 6.0f).withHeight(grHeight);
                 
                 juce::Colour grColor = juce::Colours::red.withAlpha(0.7f);
                 g.setColour(grColor);
                 g.fillRect(grBar);
                 
-                juce::ColourGradient grad(grColor, grBar.getX(), grBar.getY(),
-                                         juce::Colours::transparentBlack, grBar.getX(), grBar.getBottom(), false);
+                juce::ColourGradient grad(grColor, 0.0f, grBar.getY(),
+                                         juce::Colours::transparentBlack, 0.0f, grBar.getBottom(), false);
                 g.setGradientFill(grad);
                 g.fillRect(grBar);
 

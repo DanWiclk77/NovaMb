@@ -165,6 +165,7 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         }
     }
 
+    outputBuffer.setSize(buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
     outputBuffer.clear();
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
