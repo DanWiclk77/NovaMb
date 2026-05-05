@@ -31,3 +31,4 @@ jobs:
       with:
         name: NovaMB-VST3-Windows
         path: build/NovaMB_artefacts/Release/VST3/NovaMB.vst3
+        
