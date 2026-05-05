@@ -276,32 +276,55 @@ public:
         juce::Rectangle<float> bandRects[] = { analyzerDisplay.withRight(x1), analyzerDisplay.withLeft(x1).withRight(x2), analyzerDisplay.withLeft(x2) };
         const juce::Colour bandColors[] = { juce::Colour(0xff3b82f6), juce::Colour(0xffec4899), juce::Colour(0xff10b981) };
 
+        // Draw Gain Reduction Curves (Nova-style)
+        juce::Path grPath;
+        bool hasGR = false;
+        
         for (int i = 0; i < 3; ++i) {
-            bool isSelected = (i == selectedBand);
-            g.setColour(bandColors[i].withAlpha(isSelected ? 0.25f : 0.08f)); g.fillRect(bandRects[i]);
-            g.setColour(bandColors[i].withAlpha(isSelected ? 1.0f : 0.4f)); 
-            g.fillRect(bandRects[i].withHeight(isSelected ? 4.0f : 1.2f));
-            
             float gr = engine.getGainReduction(i);
-            if (std::abs(gr) > 0.1f) {
-                float grHeight = juce::jlimit(0.0f, analyzerDisplay.getHeight(), (std::abs(gr) / 32.0f) * analyzerDisplay.getHeight());
+            if (std::abs(gr) > 0.05f) {
+                hasGR = true;
+                float dip = juce::jlimit(0.0f, analyzerDisplay.getHeight() * 0.8f, (std::abs(gr) / 32.0f) * analyzerDisplay.getHeight());
                 
-                juce::Rectangle<float> grBar = bandRects[i].withHeight(grHeight);
+                float bXStart = bandRects[i].getX();
+                float bXEnd = bandRects[i].getRight();
+                float midX = bXStart + (bXEnd - bXStart) * 0.5f;
                 
-                juce::Colour grColor = juce::Colours::red.withAlpha(0.5f);
-                g.setColour(grColor);
-                g.fillRect(grBar);
-                
-                juce::ColourGradient grad(grColor.withAlpha(0.8f), 0, grBar.getY(),
-                                         juce::Colours::transparentBlack, 0, grBar.getBottom(), false);
-                g.setGradientFill(grad);
-                g.fillRect(grBar);
+                if (i == 0) { // Low Shelf
+                    if (grPath.isEmpty()) grPath.startNewSubPath(analyzerDisplay.getX(), analyzerDisplay.getY() + dip);
+                    grPath.lineTo(midX - (bXEnd - midX) * 0.2f, analyzerDisplay.getY() + dip);
+                    grPath.cubicTo(midX, analyzerDisplay.getY() + dip, bXEnd - (bXEnd - bXStart) * 0.1f, analyzerDisplay.getY(), bXEnd, analyzerDisplay.getY());
+                }
+                else if (i == 1) { // Bell
+                    if (grPath.isEmpty()) grPath.startNewSubPath(bXStart, analyzerDisplay.getY());
+                    grPath.cubicTo(bXStart + (midX - bXStart) * 0.3f, analyzerDisplay.getY(), midX - (midX - bXStart) * 0.2f, analyzerDisplay.getY() + dip, midX, analyzerDisplay.getY() + dip);
+                    grPath.cubicTo(midX + (bXEnd - midX) * 0.2f, analyzerDisplay.getY() + dip, bXEnd - (bXEnd - midX) * 0.3f, analyzerDisplay.getY(), bXEnd, analyzerDisplay.getY());
+                }
+                else { // High Shelf
+                    if (grPath.isEmpty()) grPath.startNewSubPath(bXStart, analyzerDisplay.getY());
+                    grPath.cubicTo(bXStart + (bXEnd - bXStart) * 0.1f, analyzerDisplay.getY(), midX, analyzerDisplay.getY() + dip, midX + (bXEnd - midX) * 0.2f, analyzerDisplay.getY() + dip);
+                    grPath.lineTo(analyzerDisplay.getRight(), analyzerDisplay.getY() + dip);
+                }
+            } else if (!grPath.isEmpty()) {
+                grPath.lineTo(bandRects[i].getRight(), analyzerDisplay.getY());
+            } else if (i == 0) {
+                grPath.startNewSubPath(analyzerDisplay.getX(), analyzerDisplay.getY());
+            }
+        }
 
-                g.setFont(juce::Font("Inter", 12.0f, juce::Font::bold));
-                g.setColour(juce::Colours::white);
-                float textY = analyzerDisplay.getY() + grHeight + 4;
-                if (textY > analyzerDisplay.getBottom() - 25) textY = analyzerDisplay.getBottom() - 25;
-                g.drawText(juce::String(gr, 1) + " dB", bandRects[i].reduced(2,0).withY((int)textY).withHeight(20), juce::Justification::centredTop);
+        if (hasGR) {
+            g.setColour(juce::Colours::red.withAlpha(0.7f));
+            g.strokePath(grPath, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            
+            // Text labels for GR
+            for (int i = 0; i < 3; ++i) {
+                float gr = engine.getGainReduction(i);
+                if (std::abs(gr) > 0.1f) {
+                    g.setFont(juce::Font("Inter", 11.0f, juce::Font::bold));
+                    g.setColour(juce::Colours::white.withAlpha(0.9f));
+                    float xPos = bandRects[i].getCentreX() - 30;
+                    g.drawText(juce::String(gr, 1) + " dB", (int)xPos, (int)analyzerDisplay.getY() + 15, 60, 20, juce::Justification::centred);
+                }
             }
         }
 
@@ -367,4 +390,276 @@ public:
         p.closeSubPath();
 
         if (isSidechain) {
-            g.setColour(juce::
+            g.setColour(juce::Colours::orange.withAlpha(0.15f));
+            g.fillPath(p);
+            g.setColour(juce::Colours::orange.withAlpha(0.5f));
+            g.strokePath(p, juce::PathStrokeType(1.0f));
+        } else {
+            // Main spectrum with gradient
+            juce::ColourGradient specGrad(juce::Colours::cyan.withAlpha(0.2f), 0, r.getY(),
+                                         juce::Colours::cyan.withAlpha(0.05f), 0, r.getBottom(), false);
+            g.setGradientFill(specGrad);
+            g.fillPath(p);
+            g.setColour(juce::Colours::cyan.withAlpha(0.7f));
+            g.strokePath(p, juce::PathStrokeType(1.2f));
+        }
+    }
+
+    void drawPanel(juce::Graphics& g, juce::Rectangle<float> r, juce::String title) {
+        g.setColour(juce::Colour(0xff1a1c21)); g.fillRoundedRectangle(r, 12.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.08f)); g.drawRoundedRectangle(r, 12.0f, 1.5f);
+        g.setColour(juce::Colours::white.withAlpha(0.65f)); g.setFont(juce::Font("Inter", 11.0f, juce::Font::bold));
+        g.drawText(title.toUpperCase(), r.removeFromTop(35).reduced(20, 0), juce::Justification::centredLeft);
+    }
+
+    void drawGrids(juce::Graphics& g, juce::Rectangle<float> r) {
+        g.setColour(juce::Colours::white.withAlpha(0.04f));
+        
+        auto freqToX = [&](float f) {
+            float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
+            return r.getX() + norm * r.getWidth();
+        };
+
+        float freqs[] = { 100, 200, 500, 1000, 2000, 5000, 10000 };
+        for (auto f : freqs) {
+            float x = freqToX(f);
+            g.drawVerticalLine((int)x, r.getY(), r.getBottom());
+        }
+        
+        g.setColour(juce::Colours::white.withAlpha(0.15f));
+        g.setFont(juce::Font("Inter", 9.0f, juce::Font::plain));
+        g.drawText("100Hz", (int)freqToX(100) - 20, (int)r.getBottom() - 15, 40, 12, juce::Justification::centred);
+        g.drawText("1kHz", (int)freqToX(1000) - 20, (int)r.getBottom() - 15, 40, 12, juce::Justification::centred);
+        g.drawText("10kHz", (int)freqToX(10000) - 20, (int)r.getBottom() - 15, 40, 12, juce::Justification::centred);
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override {
+        auto area = getLocalBounds().toFloat().reduced(24);
+        area.removeFromLeft(100); 
+        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.52f);
+        auto analyzerDisplay = analyzerArea.reduced(2, 35);
+
+        if (analyzerDisplay.contains(e.position)) {
+            float cross1 = processor.getAPVTS().getRawParameterValue("cross_low_mid")->load();
+            float cross2 = processor.getAPVTS().getRawParameterValue("cross_mid_high")->load();
+            
+            auto freqToX = [&](float f) {
+                float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
+                return analyzerDisplay.getX() + norm * analyzerDisplay.getWidth();
+            };
+
+            if (std::abs(e.position.x - freqToX(cross1)) < 30.0f) draggingCrossover = 1;
+            else if (std::abs(e.position.x - freqToX(cross2)) < 30.0f) draggingCrossover = 2;
+            else {
+                float relX = (e.position.x - analyzerDisplay.getX()) / analyzerDisplay.getWidth();
+                float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
+                if (f < cross1) selectBand(0);
+                else if (f < cross2) selectBand(1);
+                else selectBand(2);
+                draggingCrossover = 0;
+            }
+        }
+    }
+
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if (draggingCrossover == 0) return;
+        auto area = getLocalBounds().toFloat().reduced(24);
+        area.removeFromLeft(100); 
+        auto analyzerArea = area.removeFromTop(area.getHeight() * 0.52f);
+        auto analyzerDisplay = analyzerArea.reduced(2, 35);
+
+        float relX = juce::jlimit(0.0f, 1.0f, (e.position.x - analyzerDisplay.getX()) / analyzerDisplay.getWidth());
+        float f = std::pow(10.0f, std::log10(20.0f) + relX * (std::log10(20000.0f) - std::log10(20.0f)));
+        
+        auto& apvts = processor.getAPVTS();
+        if (draggingCrossover == 1) {
+            float c2 = apvts.getRawParameterValue("cross_mid_high")->load();
+            if (f < c2 - 50.0f) {
+                auto* p = apvts.getParameter("cross_low_mid");
+                p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(f));
+            }
+        } else if (draggingCrossover == 2) {
+            float c1 = apvts.getRawParameterValue("cross_low_mid")->load();
+            if (f > c1 + 50.0f) {
+                auto* p = apvts.getParameter("cross_mid_high");
+                p->setValueNotifyingHost(p->getNormalisableRange().convertTo0to1(p->getNormalisableRange().snapToLegalValue(f)));
+            }
+        }
+    }
+
+    void mouseUp(const juce::MouseEvent&) override { draggingCrossover = 0; }
+    void timerCallback() override { repaint(); }
+
+    void resized() override {
+        auto area = getLocalBounds().toFloat();
+        auto sidebar = area.removeFromLeft(100); 
+        
+        presetButton.setBounds(sidebar.reduced(15, 0).withHeight(35).withY(150).toNearestInt());
+        aiButton.setBounds(sidebar.reduced(15, 0).withHeight(35).withY(200).toNearestInt());
+        
+        auto body = area.reduced(24);
+        auto controlsArea = body.withTrimmedTop(body.getHeight() * 0.52f + 20); 
+        auto knobsArea = controlsArea.reduced(20, 25);
+        knobsArea.removeFromTop(40); // extra space for titles
+        
+        auto topRow = knobsArea.removeFromTop(knobsArea.getHeight() * 0.48f);
+        topRow.removeFromTop(25); // space for labels
+        
+        auto knobW = topRow.getWidth() / 4.0f;
+        thresholdSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        ratioSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        attackSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        releaseSlider.setBounds(topRow.removeFromLeft(knobW).reduced(4).toNearestInt());
+        
+        auto botRow = knobsArea;
+        botRow.removeFromTop(30); // space for labels
+        
+        auto botKnobW = botRow.getWidth() / 5.0f;
+        makeupSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(4).toNearestInt());
+        kneeSlider.setBounds(botRow.removeFromLeft(botKnobW).reduced(4).toNearestInt());
+        
+        auto midArea = botRow.removeFromLeft(botKnobW * 1.5f).reduced(5);
+        modeSelector.setBounds(midArea.removeFromTop(midArea.getHeight() * 0.54f).reduced(2, 4).toNearestInt());
+        scSelector.setBounds(midArea.reduced(2, 4).toNearestInt());
+ 
+        auto btnArea = botRow.reduced(10, 5); 
+        float btnH = btnArea.getHeight() / 2.0f; 
+        soloButton.setBounds(btnArea.removeFromTop(btnH).reduced(4, 2).toNearestInt());
+        muteButton.setBounds(btnArea.removeFromTop(btnH).reduced(4, 2).toNearestInt());
+    }
+
+private:
+    NovaMBAudioProcessor& processor; NovaMB::MultibandEngine& engine; PlatinumLookAndFeel platinumLF;
+    int selectedBand = 1; int draggingCrossover = 0;
+    juce::Slider thresholdSlider, ratioSlider, attackSlider, releaseSlider, makeupSlider, kneeSlider;
+    juce::ComboBox modeSelector, scSelector;
+    juce::TextButton soloButton, muteButton, aiButton, presetButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thresholdAttachment, ratioAttachment, attackAttachment, releaseAttachment, makeupAttachment, kneeAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAttachment, muteAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAttachment, scAttachment;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NovaMBEditor)
+};
+
+// --- Processor Implementation ---
+
+NovaMBAudioProcessor::NovaMBAudioProcessor() 
+    : AudioProcessor(BusesProperties()
+        .withInput("Input", juce::AudioChannelSet::stereo(), true)
+        .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+        .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)),
+      apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
+{
+}
+
+NovaMBAudioProcessor::~NovaMBAudioProcessor() {}
+
+const juce::String NovaMBAudioProcessor::getName() const { return "NovaMB"; }
+bool NovaMBAudioProcessor::acceptsMidi() const { return false; }
+bool NovaMBAudioProcessor::producesMidi() const { return false; }
+double NovaMBAudioProcessor::getTailLengthSeconds() const { return 0.0; }
+int NovaMBAudioProcessor::getNumPrograms() { return 1; }
+int NovaMBAudioProcessor::getCurrentProgram() { return 0; }
+void NovaMBAudioProcessor::setCurrentProgram(int) {}
+const juce::String NovaMBAudioProcessor::getProgramName(int) { return {}; }
+void NovaMBAudioProcessor::changeProgramName(int, const juce::String&) {}
+
+juce::ParameterID NovaMBAudioProcessor::getParamID(int band, juce::String name) {
+    return juce::ParameterID(juce::String(band) + "_" + name, 1);
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout NovaMBAudioProcessor::createParameterLayout() {
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    
+    auto dbString = [](float v, int) { return juce::String(v, 1) + " dB"; };
+    auto ratioString = [](float v, int) { return juce::String(v, 1) + ":1"; };
+    auto msString = [](float v, int) { return juce::String(v, 0) + " ms"; };
+    auto hzString = [](float v, int) { return juce::String(v, 0) + " Hz"; };
+
+    // Crossovers
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("cross_low_mid", 1), "Low-Mid Crossover", juce::NormalisableRange<float>(20.0f, 1000.0f, 1.0f, 0.4f), 200.0f, juce::AudioParameterFloatAttributes().withLabel("Hz").withStringFromValueFunction(hzString)));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("cross_mid_high", 1), "Mid-High Crossover", juce::NormalisableRange<float>(1000.0f, 20000.0f, 1.0f, 0.4f), 5000.0f, juce::AudioParameterFloatAttributes().withLabel("Hz").withStringFromValueFunction(hzString)));
+
+        for (int i = 0; i < 3; ++i) {
+            juce::String bandName = "Band " + juce::String(i + 1) + " ";
+            params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "active"), bandName + "Active", true));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "threshold"), bandName + "Threshold", juce::NormalisableRange<float>(-60.0f, 0.0f, 0.1f), -20.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "ratio"), bandName + "Ratio", juce::NormalisableRange<float>(1.0f, 20.0f, 0.1f), 4.0f, juce::AudioParameterFloatAttributes().withLabel(":1").withStringFromValueFunction(ratioString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "attack"), bandName + "Attack", juce::NormalisableRange<float>(0.1f, 500.0f, 0.1f), 20.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "release"), bandName + "Release", juce::NormalisableRange<float>(10.0f, 2000.0f, 1.0f), 100.0f, juce::AudioParameterFloatAttributes().withLabel("ms").withStringFromValueFunction(msString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "makeup"), bandName + "Makeup Gain", juce::NormalisableRange<float>(0.0f, 24.0f, 0.1f), 0.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(getParamID(i, "knee"), bandName + "Knee", juce::NormalisableRange<float>(0.0f, 30.0f, 0.1f), 6.0f, juce::AudioParameterFloatAttributes().withLabel("dB").withStringFromValueFunction(dbString)));
+            params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "solo"), bandName + "Solo", false));
+            params.push_back(std::make_unique<juce::AudioParameterBool>(getParamID(i, "mute"), bandName + "Mute", false));
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(getParamID(i, "mode"), bandName + "Mode", juce::StringArray("Compress", "Expand"), 0));
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(getParamID(i, "sc-source"), bandName + "SC Source", juce::StringArray("Internal", "External"), 0));
+        }
+    return { params.begin(), params.end() };
+}
+
+void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
+    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32)samplesPerBlock, (juce::uint32)getTotalNumOutputChannels() };
+    engine.prepare(spec);
+}
+
+void NovaMBAudioProcessor::releaseResources() {}
+
+void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+    float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
+    float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
+
+    for (int i = 0; i < 3; ++i) {
+        NovaMB::BandParameters b;
+        b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
+        b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
+        b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
+        b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
+        b.makeUpGain = apvts.getRawParameterValue(getParamID(i, "makeup").getParamID())->load();
+        b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
+        b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
+        b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
+        b.active = true; // Always active since button was removed
+        
+        int modeIdx = (int)apvts.getRawParameterValue(getParamID(i, "mode").getParamID())->load();
+        b.mode = (modeIdx == 1) ? NovaMB::Mode::Expand : NovaMB::Mode::Compress;
+
+        int scIdx = (int)apvts.getRawParameterValue(getParamID(i, "sc-source").getParamID())->load();
+        b.sidechainSource = (scIdx == 1) ? NovaMB::SidechainSource::External : NovaMB::SidechainSource::Internal;
+
+        if (i == 0) { b.frequencyLow = 20.0f; b.frequencyHigh = cross1; }
+        else if (i == 1) { b.frequencyLow = cross1; b.frequencyHigh = cross2; }
+        else { b.frequencyLow = cross2; b.frequencyHigh = 20000.0f; }
+
+        engine.updateBand(i, b);
+    }
+
+    auto sidechainBus = getBus(true, 1);
+    if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
+        auto scBuffer = getBusBuffer(buffer, true, 1);
+        engine.process(buffer, scBuffer);
+    } else {
+        juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
+        engine.process(buffer, emptySC);
+    }
+}
+
+juce::AudioProcessorEditor* NovaMBAudioProcessor::createEditor() {
+    return new NovaMBEditor(*this, engine);
+}
+
+bool NovaMBAudioProcessor::hasEditor() const { return true; }
+
+void NovaMBAudioProcessor::getStateInformation(juce::MemoryBlock& destData) {
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
+}
+
+void NovaMBAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    if (xmlState != nullptr) apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+}
+
+// Entry point for JUCE plugin
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
+    return new NovaMBAudioProcessor();
+}
