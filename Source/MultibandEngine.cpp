@@ -17,6 +17,11 @@ void CompressorBand::prepare(const juce::dsp::ProcessSpec& spec) {
 
 void CompressorBand::updateParameters(const BandParameters& params) {
     parameters = params;
+    
+    // We'll configure filters based on the frequencies in process if needed, 
+    // but better to set them here. 
+    // Note: Band 0 only needs loPass, Band 1 needs both, Band 2 only needs hiPass.
+    // However, to keep it simple, we'll configure both and use them selectively.
     loPass.setCutoffFrequency(params.frequencyHigh);
     hiPass.setCutoffFrequency(params.frequencyLow);
     
@@ -24,7 +29,7 @@ void CompressorBand::updateParameters(const BandParameters& params) {
     compressor.setRatio(params.ratio);
     compressor.setAttack(params.attack);
     compressor.setRelease(params.release);
-
+    
     expander.setThreshold(params.threshold);
     expander.setRatio(params.ratio);
     expander.setAttack(params.attack);
@@ -34,31 +39,40 @@ void CompressorBand::updateParameters(const BandParameters& params) {
 }
 
 void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context, const juce::AudioBuffer<float>& sidechainBuffer) {
-    if (parameters.bypassed || !parameters.active) return;
-
-    // 1. Filter band
-    loPass.process(context);
-    hiPass.process(context);
+    if (!parameters.active) return;
     
+    // 1. Filter band. 
+    // If it's a low band, frequencyLow is 20, so hiPass(20) does nothing. 
+    // If it's a high band, frequencyHigh is 20000, so loPass(20000) does nothing.
+    // However, to sum correctly with Linkwitz-Riley, we should ideally use nested splits.
+    // For now, we use these as crossovers. 
+    if (parameters.frequencyHigh < 19900.0f) loPass.process(context);
+    if (parameters.frequencyLow > 21.0f) hiPass.process(context);
+    
+    if (parameters.bypassed) return;
+
+    auto& block = context.getOutputBlock();
+    if (block.getNumSamples() == 0) return;
+
     // 2. Measure level before
     float before = 0.0f;
-    auto& block = context.getOutputBlock();
-    if (block.getNumSamples() > 0) {
-        for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
-            float sum = 0.0f;
-            auto* chPtr = block.getChannelPointer(ch);
-            for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
-            before += std::sqrt(sum / (float)block.getNumSamples());
-        }
-        before /= (float)block.getNumChannels();
+    for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
+        float sum = 0.0f;
+        auto* chPtr = block.getChannelPointer(ch);
+        for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
+        before += std::sqrt(sum / (float)block.getNumSamples());
     }
+    before /= (float)block.getNumChannels();
 
-    const bool useSC = (parameters.sidechainSource == SidechainSource::External && sidechainBuffer.getNumSamples() > 0 && sidechainBuffer.getNumChannels() > 0);
+    const bool useSC = (parameters.sidechainSource == SidechainSource::External && sidechainBuffer.getNumSamples() >= (int)block.getNumSamples() && sidechainBuffer.getNumChannels() > 0);
 
     if (parameters.mode == Mode::Compress) {
         if (useSC) {
-            juce::AudioBuffer<float> scCopy;
-            scCopy.makeCopyOf(sidechainBuffer);
+            // SC compression logic (simplificado)
+            juce::AudioBuffer<float> scCopy(sidechainBuffer.getNumChannels(), (int)block.getNumSamples());
+            for (int ch=0; ch<sidechainBuffer.getNumChannels(); ++ch)
+                scCopy.copyFrom(ch, 0, sidechainBuffer, ch, 0, (int)block.getNumSamples());
+            
             juce::dsp::AudioBlock<float> scBlock(scCopy);
             juce::dsp::ProcessContextReplacing<float> scContext(scBlock);
             compressor.process(scContext);
@@ -69,21 +83,22 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
                 auto* ptrA = scBlock.getChannelPointer(ch);
                 auto* ptrB = sidechainBuffer.getReadPointer((int)ch);
                 for (size_t s = 0; s < scBlock.getNumSamples(); ++s) {
-                    sumA += ptrA[s] * ptrA[s];
-                    sumB += ptrB[s] * ptrB[s];
+                    sumA += ptrA[s] * ptrA[s]; sumB += ptrB[s] * ptrB[s];
                 }
                 scAfter += std::sqrt(sumA / (float)scBlock.getNumSamples());
                 scBefore += std::sqrt(sumB / (float)scBlock.getNumSamples());
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
-            block.multiplyBy(gr);
+            block.multiplyBy(juce::jlimit(0.0f, 1.0f, gr));
         } else {
             compressor.process(context);
         }
     } else { // Expand
         if (useSC) {
-            juce::AudioBuffer<float> scCopy;
-            scCopy.makeCopyOf(sidechainBuffer);
+            // SC expansion
+            juce::AudioBuffer<float> scCopy(sidechainBuffer.getNumChannels(), (int)block.getNumSamples());
+            for (int ch=0; ch<sidechainBuffer.getNumChannels(); ++ch)
+                scCopy.copyFrom(ch, 0, sidechainBuffer, ch, 0, (int)block.getNumSamples());
             juce::dsp::AudioBlock<float> scBlock(scCopy);
             juce::dsp::ProcessContextReplacing<float> scContext(scBlock);
             expander.process(scContext);
@@ -94,33 +109,32 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
                 auto* ptrA = scBlock.getChannelPointer(ch);
                 auto* ptrB = sidechainBuffer.getReadPointer((int)ch);
                 for (size_t s = 0; s < scBlock.getNumSamples(); ++s) {
-                    sumA += ptrA[s] * ptrA[s];
-                    sumB += ptrB[s] * ptrB[s];
+                    sumA += ptrA[s] * ptrA[s]; sumB += ptrB[s] * ptrB[s];
                 }
                 scAfter += std::sqrt(sumA / (float)scBlock.getNumSamples());
                 scBefore += std::sqrt(sumB / (float)scBlock.getNumSamples());
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
-            block.multiplyBy(gr);
+            block.multiplyBy(juce::jlimit(1.0f, 10.0f, gr));
         } else {
             expander.process(context);
         }
     }
     
+    // Makeup gain
+    gain.process(context);
+
+    // Measure level after
     float after = 0.0f;
-    if (block.getNumSamples() > 0) {
-        for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
-            float sum = 0.0f;
-            auto* chPtr = block.getChannelPointer(ch);
-            for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
-            after += std::sqrt(sum / (float)block.getNumSamples());
-        }
-        after /= (float)block.getNumChannels();
+    for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
+        float sum = 0.0f;
+        auto* chPtr = block.getChannelPointer(ch);
+        for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
+        after += std::sqrt(sum / (float)block.getNumSamples());
     }
+    after /= (float)block.getNumChannels();
     
     lastReduction = (before > 0.0001f) ? juce::Decibels::gainToDecibels(after / before) : 0.0f;
-    
-    gain.process(context);
 }
 
 float CompressorBand::getGainReduction() const {

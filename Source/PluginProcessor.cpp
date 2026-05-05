@@ -286,14 +286,14 @@ public:
             if (std::abs(gr) > 0.1f) {
                 float grHeight = juce::jlimit(0.0f, analyzerDisplay.getHeight(), (std::abs(gr) / 32.0f) * analyzerDisplay.getHeight());
                 
-                auto grBar = bandRects[i].withHeight(grHeight);
+                juce::Rectangle<float> grBar = bandRects[i].withHeight(grHeight);
                 
                 juce::Colour grColor = juce::Colours::red.withAlpha(0.5f);
                 g.setColour(grColor);
                 g.fillRect(grBar);
                 
-                juce::ColourGradient grad(grColor.withAlpha(0.7f), grBar.getX(), grBar.getY(),
-                                         juce::Colours::transparentBlack, grBar.getX(), grBar.getBottom(), false);
+                juce::ColourGradient grad(grColor.withAlpha(0.8f), 0, grBar.getY(),
+                                         juce::Colours::transparentBlack, 0, grBar.getBottom(), false);
                 g.setGradientFill(grad);
                 g.fillRect(grBar);
 
@@ -324,8 +324,6 @@ public:
             g.setColour(juce::Colours::cyan.withAlpha(0.3f));
             g.fillEllipse(activeX - 12, analyzerDisplay.getCentreY() - 12, 24, 24);
         }
-
-        drawGRCurve(g, analyzerDisplay);
 
         body.removeFromTop(20);
         auto controlsArea = body;
@@ -382,42 +380,6 @@ public:
             g.setColour(juce::Colours::cyan.withAlpha(0.7f));
             g.strokePath(p, juce::PathStrokeType(1.2f));
         }
-    }
-
-    void drawGRCurve(juce::Graphics& g, juce::Rectangle<float> r) {
-        float cross1 = processor.getAPVTS().getRawParameterValue("cross_low_mid")->load();
-        float cross2 = processor.getAPVTS().getRawParameterValue("cross_mid_high")->load();
-        
-        auto freqToX = [&](float f) {
-            float norm = (std::log10(f) - std::log10(20.0f)) / (std::log10(20000.0f) - std::log10(20.0f));
-            return r.getX() + norm * r.getWidth();
-        };
-
-        float xPoints[] = { r.getX(), freqToX(cross1), freqToX(cross2), r.getRight() };
-        
-        juce::Path p; 
-        for (int i = 0; i < 3; ++i) {
-            float gr = engine.getGainReduction(i); 
-            float dip = juce::jlimit(0.0f, 1.0f, std::abs(gr) / 32.0f) * 60.0f;
-            float bX1 = xPoints[i];
-            float bX2 = xPoints[i+1];
-            float xM = bX1 + (bX2 - bX1) * 0.5f;
-
-            if (i == 0) { // Low Shelf Visual
-                p.startNewSubPath(bX1, r.getY() + dip);
-                p.lineTo(xM, r.getY() + dip);
-                p.cubicTo(bX2 - (bX2 - bX1) * 0.2f, r.getY() + dip, bX2 - (bX2 - bX1) * 0.1f, r.getY(), bX2, r.getY());
-            } 
-            else if (i == 1) { // Mid Bell
-                p.cubicTo(xM - (bX2 - bX1) * 0.2f, r.getY(), xM - (bX2 - bX1) * 0.1f, r.getY() + dip, xM, r.getY() + dip);
-                p.cubicTo(xM + (bX2 - bX1) * 0.1f, r.getY() + dip, xM + (bX2 - bX1) * 0.2f, r.getY(), bX2, r.getY());
-            }
-            else { // High Shelf Visual
-                p.cubicTo(bX1 + (bX2 - bX1) * 0.1f, r.getY(), bX1 + (bX2 - bX1) * 0.2f, r.getY() + dip, xM, r.getY() + dip);
-                p.lineTo(bX2, r.getY() + dip);
-            }
-        }
-        g.setColour(juce::Colours::red.withAlpha(0.7f)); g.strokePath(p, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     void drawPanel(juce::Graphics& g, juce::Rectangle<float> r, juce::String title) {
