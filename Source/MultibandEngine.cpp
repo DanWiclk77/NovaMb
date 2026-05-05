@@ -5,6 +5,8 @@ namespace NovaMB {
 CompressorBand::CompressorBand() {
     loPass.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
     hiPass.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    smoothedGr.reset(44100.0, 0.05); // 50ms default smoothing
+    smoothedGr.setCurrentAndTargetValue(1.0f);
 }
 
 void CompressorBand::prepare(const juce::dsp::ProcessSpec& spec) {
@@ -14,6 +16,7 @@ void CompressorBand::prepare(const juce::dsp::ProcessSpec& spec) {
     expander.prepare(spec);
     gain.prepare(spec);
     scBuffer.setSize((int)spec.numChannels, (int)spec.maximumBlockSize);
+    smoothedGr.reset(spec.sampleRate, 0.02); // 20ms smoothing
 }
 
 void CompressorBand::updateParameters(const BandParameters& params) {
@@ -47,23 +50,26 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     // If it's a high band, frequencyHigh is 20000, so loPass(20000) does nothing.
     // However, to sum correctly with Linkwitz-Riley, we should ideally use nested splits.
     // For now, we use these as crossovers. 
-    if (parameters.frequencyHigh < 19900.0f) loPass.process(context);
-    if (parameters.frequencyLow > 21.0f) hiPass.process(context);
+    if (parameters.frequencyHigh < 19000.0f) loPass.process(context);
+    if (parameters.frequencyLow > 30.0f) hiPass.process(context);
     
     if (parameters.bypassed) return;
 
     auto& block = context.getOutputBlock();
-    if (block.getNumSamples() == 0) return;
+    const int numSamples = (int)block.getNumSamples();
+    const int numChannels = (int)block.getNumChannels();
+    
+    if (numSamples == 0 || numChannels == 0) return;
 
     // 2. Measure level before
     float before = 1e-9f;
-    for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
+    for (int ch = 0; ch < numChannels; ++ch) {
         float sum = 0.0f;
         auto* chPtr = block.getChannelPointer(ch);
-        for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
-        before += std::sqrt(sum / juce::jmax(1.0f, (float)block.getNumSamples()));
+        for (int s = 0; s < numSamples; ++s) sum += chPtr[s] * chPtr[s];
+        before += std::sqrt(sum / (float)numSamples);
     }
-    before /= juce::jmax(1.0f, (float)block.getNumChannels());
+    before /= (float)numChannels;
 
     const bool useSC = (parameters.sidechainSource == SidechainSource::External && sidechainBuffer.getNumSamples() >= (int)block.getNumSamples() && sidechainBuffer.getNumChannels() > 0);
 
@@ -98,7 +104,13 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
                 scBefore /= (float)scChannels;
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
-            block.multiplyBy(juce::jlimit(0.0f, 1.0f, gr));
+            smoothedGr.setTargetValue(juce::jlimit(0.0f, 1.0f, gr));
+            
+            for (int s = 0; s < (int)block.getNumSamples(); ++s) {
+                float currentGr = smoothedGr.getNextValue();
+                for (int ch = 0; ch < (int)block.getNumChannels(); ++ch)
+                    block.getChannelPointer(ch)[s] *= currentGr;
+            }
         } else {
             compressor.process(context);
         }
@@ -133,7 +145,13 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
                 scBefore /= (float)scChannels;
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
-            block.multiplyBy(juce::jlimit(1.0f, 10.0f, gr));
+            smoothedGr.setTargetValue(juce::jlimit(1.0f, 10.0f, gr));
+            
+            for (int s = 0; s < (int)block.getNumSamples(); ++s) {
+                float currentGr = smoothedGr.getNextValue();
+                for (int ch = 0; ch < (int)block.getNumChannels(); ++ch)
+                    block.getChannelPointer(ch)[s] *= currentGr;
+            }
         } else {
             expander.process(context);
         }

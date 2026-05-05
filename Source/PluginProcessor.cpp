@@ -57,11 +57,11 @@ public:
         juce::Colour baseColor;
         
         if (button.getButtonText().containsIgnoreCase("MUTE")) {
-            baseColor = isToggled ? juce::Colours::red.withAlpha(0.7f) : juce::Colour(0xff1a1c21);
+            baseColor = isToggled ? juce::Colours::red.withAlpha(0.85f) : juce::Colour(0xff1a1c21);
         } else if (button.getButtonText().containsIgnoreCase("SOLO")) {
-            baseColor = isToggled ? juce::Colours::cyan.withAlpha(0.7f) : juce::Colour(0xff1a1c21);
+            baseColor = isToggled ? juce::Colours::cyan.withAlpha(0.85f) : juce::Colour(0xff1a1c21);
         } else {
-            baseColor = isToggled ? juce::Colours::white.withAlpha(0.18f) : juce::Colour(0xff1a1c21);
+            baseColor = isToggled ? juce::Colours::white.withAlpha(0.25f) : juce::Colour(0xff1a1c21);
         }
         
         // Add subtle vertical gradient for "metal" feel
@@ -121,7 +121,10 @@ public:
         createSlider(makeupSlider); createSlider(kneeSlider);
 
         auto createButton = [this](juce::TextButton& b, juce::String label) {
-            b.setButtonText(label); b.setToggleable(true); addAndMakeVisible(b);
+            b.setButtonText(label); 
+            b.setToggleable(true); 
+            b.setClickingTogglesState(true);
+            addAndMakeVisible(b);
         };
 
         createButton(soloButton, "SOLO"); createButton(muteButton, "MUTE");
@@ -260,9 +263,7 @@ public:
         auto analyzerDisplay = analyzerArea.reduced(2, 35);
         g.setColour(juce::Colours::black.withAlpha(0.8f)); g.fillRoundedRectangle(analyzerDisplay, 6.0f);
         drawGrids(g, analyzerDisplay);
-
         drawSpectrum(g, analyzerDisplay, false);
-        drawSpectrum(g, analyzerDisplay, true);
 
         float cross1 = processor.getAPVTS().getRawParameterValue("cross_low_mid")->load();
         float cross2 = processor.getAPVTS().getRawParameterValue("cross_mid_high")->load();
@@ -371,8 +372,8 @@ public:
 
         auto botArea = controlsArea.reduced(25, 25).withTrimmedTop(controlsArea.getHeight() * 0.72f);
         auto bW = botArea.getWidth() / 5.0f;
-        g.drawText("DYNAMICS MODE & SC", botArea.getX() + 2 * bW, botArea.getY() - 18, bW * 1.5f, 15, juce::Justification::centred);
-        g.drawText("TOGGLES", botArea.getX() + 3.5f * bW, botArea.getY() - 18, bW * 1.5f, 15, juce::Justification::centred);
+        g.drawText("DYNAMICS MODE & SC", botArea.getX() + 2 * bW, botArea.getY() - 32, bW * 1.5f, 15, juce::Justification::centred);
+        g.drawText("TOGGLES", botArea.getX() + 3.5f * bW, botArea.getY() - 32, bW * 1.5f, 15, juce::Justification::centred);
     }
 
     void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> r, bool isSidechain) {
@@ -617,7 +618,7 @@ void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
         b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
         b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
-        b.active = true; // Always active since button was removed
+        b.active = true; 
         
         int modeIdx = (int)apvts.getRawParameterValue(getParamID(i, "mode").getParamID())->load();
         b.mode = (modeIdx == 1) ? NovaMB::Mode::Expand : NovaMB::Mode::Compress;
@@ -635,10 +636,12 @@ void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     auto sidechainBus = getBus(true, 1);
     if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
         auto scBuffer = getBusBuffer(buffer, true, 1);
-        engine.process(buffer, scBuffer);
+        if (scBuffer.getNumChannels() > 0)
+            engine.process(buffer, scBuffer);
+        else
+            engine.process(buffer, juce::AudioBuffer<float>(0, buffer.getNumSamples()));
     } else {
-        juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
-        engine.process(buffer, emptySC);
+        engine.process(buffer, juce::AudioBuffer<float>(0, buffer.getNumSamples()));
     }
 }
 

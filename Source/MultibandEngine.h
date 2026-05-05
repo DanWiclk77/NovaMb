@@ -108,6 +108,7 @@ private:
     juce::dsp::Gain<float> gain;
     BandParameters parameters;
     juce::AudioBuffer<float> scBuffer;
+    juce::LinearSmoothedValue<float> smoothedGr;
     float lastReduction = 0.0f;
 };
 
