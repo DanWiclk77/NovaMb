@@ -42,12 +42,17 @@ struct SimpleExpander {
     // Procesa un bloque completo in-place
     void process(juce::dsp::ProcessContextReplacing<float>& ctx) {
         auto& block = ctx.getOutputBlock();
-        for (size_t s = 0; s < block.getNumSamples(); ++s) {
+        const int numSamples = (int)block.getNumSamples();
+        const int numChannels = (int)block.getNumChannels();
+        
+        if (numSamples == 0 || numChannels == 0) return;
+
+        for (int s = 0; s < numSamples; ++s) {
             // Calcular nivel de entrada (promedio de canales)
             float sum = 0.0f;
-            for (size_t ch = 0; ch < block.getNumChannels(); ++ch)
+            for (int ch = 0; ch < numChannels; ++ch)
                 sum += std::abs(block.getChannelPointer(ch)[s]);
-            float inputLevel = sum / (float)block.getNumChannels();
+            float inputLevel = sum / (float)numChannels;
 
             float inputDb = juce::Decibels::gainToDecibels(inputLevel + 1e-9f);
 

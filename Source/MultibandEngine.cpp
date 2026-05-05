@@ -63,7 +63,7 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
         for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
         before += std::sqrt(sum / (float)block.getNumSamples());
     }
-    before /= (float)block.getNumChannels();
+    before /= juce::jmax(1.0f, (float)block.getNumChannels());
 
     const bool useSC = (parameters.sidechainSource == SidechainSource::External && sidechainBuffer.getNumSamples() >= (int)block.getNumSamples() && sidechainBuffer.getNumChannels() > 0);
 
@@ -83,15 +83,19 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
             compressor.process(scContext);
             
             float scAfter = 0.0f, scBefore = 0.0f;
-            for (size_t ch = 0; ch < subScBlock.getNumChannels(); ++ch) {
+            for (int ch = 0; ch < scChannels; ++ch) {
                 float sumA = 0.0f, sumB = 0.0f;
                 auto* ptrA = subScBlock.getChannelPointer(ch);
-                auto* ptrB = sidechainBuffer.getReadPointer((int)ch);
+                auto* ptrB = sidechainBuffer.getReadPointer(ch);
                 for (size_t s = 0; s < subScBlock.getNumSamples(); ++s) {
                     sumA += ptrA[s] * ptrA[s]; sumB += ptrB[s] * ptrB[s];
                 }
                 scAfter += std::sqrt(sumA / (float)subScBlock.getNumSamples());
                 scBefore += std::sqrt(sumB / (float)subScBlock.getNumSamples());
+            }
+            if (scChannels > 0) {
+                scAfter /= (float)scChannels;
+                scBefore /= (float)scChannels;
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
             block.multiplyBy(juce::jlimit(0.0f, 1.0f, gr));
@@ -114,15 +118,19 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
             expander.process(scContext);
             
             float scAfter = 0.0f, scBefore = 0.0f;
-            for (size_t ch = 0; ch < subScBlock.getNumChannels(); ++ch) {
+            for (int ch = 0; ch < scChannels; ++ch) {
                 float sumA = 0.0f, sumB = 0.0f;
                 auto* ptrA = subScBlock.getChannelPointer(ch);
-                auto* ptrB = sidechainBuffer.getReadPointer((int)ch);
+                auto* ptrB = sidechainBuffer.getReadPointer(ch);
                 for (size_t s = 0; s < subScBlock.getNumSamples(); ++s) {
                     sumA += ptrA[s] * ptrA[s]; sumB += ptrB[s] * ptrB[s];
                 }
                 scAfter += std::sqrt(sumA / (float)subScBlock.getNumSamples());
                 scBefore += std::sqrt(sumB / (float)subScBlock.getNumSamples());
+            }
+            if (scChannels > 0) {
+                scAfter /= (float)scChannels;
+                scBefore /= (float)scChannels;
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
             block.multiplyBy(juce::jlimit(1.0f, 10.0f, gr));
@@ -142,7 +150,7 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
         for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
         after += std::sqrt(sum / (float)block.getNumSamples());
     }
-    after /= (float)block.getNumChannels();
+    after /= juce::jmax(1.0f, (float)block.getNumChannels());
     
     lastReduction = (before > 0.0001f) ? juce::Decibels::gainToDecibels(after / before) : 0.0f;
 }
@@ -204,6 +212,8 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
 
     sumBuffer.clear(0, numSamples);
 
+    const int channelsToProcess = juce::jmin(numChannels, sumBuffer.getNumChannels());
+
     for (int i = 0; i < (int)bands.size(); ++i) {
         auto& band = bands[i];
         
@@ -212,24 +222,25 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         auto& bBuf = bandBuffers[i];
         
         // Copy original signal to band buffer
-        for (int ch = 0; ch < numChannels; ++ch)
+        for (int ch = 0; ch < channelsToProcess; ++ch)
             bBuf.copyFrom(ch, 0, buffer, ch, 0, numSamples);
         
         juce::dsp::AudioBlock<float> block(bBuf);
-        juce::dsp::ProcessContextReplacing<float> context(block.getSubBlock(0, (size_t)numSamples));
+        auto subBlock = block.getSubBlock(0, (size_t)numSamples).getSubsetChannels(0, (size_t)channelsToProcess);
+        juce::dsp::ProcessContextReplacing<float> context(subBlock);
         
         band->process(context, sidechainBuffer);
         
         bool isAudible = !band->isMute() && (!anySolo || band->isSolo()) && band->isActive();
         
         if (isAudible) {
-            for (int ch = 0; ch < numChannels; ++ch) {
+            for (int ch = 0; ch < channelsToProcess; ++ch) {
                 sumBuffer.addFrom(ch, 0, bBuf, ch, 0, numSamples);
             }
         }
     }
     
-    for (int ch = 0; ch < numChannels; ++ch)
+    for (int ch = 0; ch < channelsToProcess; ++ch)
         buffer.copyFrom(ch, 0, sumBuffer, ch, 0, numSamples);
 }
 
