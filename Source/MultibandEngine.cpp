@@ -56,12 +56,12 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     if (block.getNumSamples() == 0) return;
 
     // 2. Measure level before
-    float before = 0.0f;
+    float before = 1e-9f;
     for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
         float sum = 0.0f;
         auto* chPtr = block.getChannelPointer(ch);
         for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
-        before += std::sqrt(sum / (float)block.getNumSamples());
+        before += std::sqrt(sum / juce::jmax(1.0f, (float)block.getNumSamples()));
     }
     before /= juce::jmax(1.0f, (float)block.getNumChannels());
 
@@ -143,16 +143,16 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
     gain.process(context);
 
     // Measure level after
-    float after = 0.0f;
+    float after = 1e-9f;
     for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
         float sum = 0.0f;
         auto* chPtr = block.getChannelPointer(ch);
         for (size_t s = 0; s < block.getNumSamples(); ++s) sum += chPtr[s] * chPtr[s];
-        after += std::sqrt(sum / (float)block.getNumSamples());
+        after += std::sqrt(sum / juce::jmax(1.0f, (float)block.getNumSamples()));
     }
     after /= juce::jmax(1.0f, (float)block.getNumChannels());
     
-    lastReduction = (before > 0.0001f) ? juce::Decibels::gainToDecibels(after / before) : 0.0f;
+    lastReduction = juce::Decibels::gainToDecibels(after / before);
 }
 
 float CompressorBand::getGainReduction() const {
@@ -225,8 +225,7 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         for (int ch = 0; ch < channelsToProcess; ++ch)
             bBuf.copyFrom(ch, 0, buffer, ch, 0, numSamples);
         
-        juce::dsp::AudioBlock<float> block(bBuf);
-        auto subBlock = block.getSubBlock(0, (size_t)numSamples).getSubsetChannels(0, (size_t)channelsToProcess);
+        juce::dsp::AudioBlock<float> subBlock (bBuf.getArrayOfWritePointers(), (juce::uint32)channelsToProcess, (size_t)numSamples);
         juce::dsp::ProcessContextReplacing<float> context(subBlock);
         
         band->process(context, sidechainBuffer);
