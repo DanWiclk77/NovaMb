@@ -102,7 +102,6 @@ private:
     SimpleExpander expander;
     juce::dsp::Gain<float> gain;
     BandParameters parameters;
-    juce::AudioBuffer<float> scBuffer;
     float lastReduction = 0.0f;
 };
 
