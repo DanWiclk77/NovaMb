@@ -144,7 +144,6 @@ MultibandEngine::MultibandEngine()
 
 void MultibandEngine::prepare(const juce::dsp::ProcessSpec& spec) {
     currentSpec = spec;
-    outputBuffer.setSize((int)spec.numChannels, (int)spec.maximumBlockSize);
     for (auto& band : bands) {
         band->prepare(spec);
     }
@@ -165,19 +164,21 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         }
     }
 
-    outputBuffer.setSize(buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
-    outputBuffer.clear();
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
     bool anySolo = false;
     for (auto& band : bands) if (band->isSolo()) { anySolo = true; break; }
 
+    juce::AudioBuffer<float> sumBuffer(numChannels, numSamples);
+    sumBuffer.clear();
+
     for (int i = 0; i < (int)bands.size(); ++i) {
         auto& band = bands[i];
         
-        juce::AudioBuffer<float> bandBuffer;
-        bandBuffer.makeCopyOf(buffer);
+        juce::AudioBuffer<float> bandBuffer(numChannels, numSamples);
+        for (int ch = 0; ch < numChannels; ++ch)
+            bandBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
         
         juce::dsp::AudioBlock<float> block(bandBuffer);
         juce::dsp::ProcessContextReplacing<float> context(block);
@@ -188,12 +189,13 @@ void MultibandEngine::process(juce::AudioBuffer<float>& buffer, const juce::Audi
         
         if (isAudible) {
             for (int ch = 0; ch < numChannels; ++ch) {
-                outputBuffer.addFrom(ch, 0, bandBuffer, ch, 0, numSamples);
+                sumBuffer.addFrom(ch, 0, bandBuffer, ch, 0, numSamples);
             }
         }
     }
     
-    buffer.makeCopyOf(outputBuffer, true);
+    for (int ch = 0; ch < numChannels; ++ch)
+        buffer.copyFrom(ch, 0, sumBuffer, ch, 0, numSamples);
 }
 
 void MultibandEngine::pushNextSampleIntoFifo(float sample, float* f, int& idx, bool& ready) {
