@@ -127,10 +127,6 @@ private:
     juce::AudioBuffer<float> sumBuffer;
     std::vector<juce::AudioBuffer<float>> bandBuffers;
     juce::AudioBuffer<float> sidechainCopy;
-    
-    juce::AudioBuffer<float> sumBuffer;
-    std::vector<juce::AudioBuffer<float>> bandBuffers;
-    juce::AudioBuffer<float> sidechainCopy;
 
     // FFT members
     static constexpr int fftOrder = 11;
