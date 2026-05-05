@@ -395,18 +395,29 @@ public:
 
         float xPoints[] = { r.getX(), freqToX(cross1), freqToX(cross2), r.getRight() };
         
-        juce::Path p; p.startNewSubPath(r.getX(), r.getY());
+        juce::Path p; 
         for (int i = 0; i < 3; ++i) {
             float gr = engine.getGainReduction(i); 
             float dip = juce::jlimit(0.0f, 1.0f, std::abs(gr) / 32.0f) * 60.0f;
             float bX1 = xPoints[i];
             float bX2 = xPoints[i+1];
             float xM = bX1 + (bX2 - bX1) * 0.5f;
-            
-            p.cubicTo(xM - (bX2 - bX1) * 0.2f, r.getY(), xM - (bX2 - bX1) * 0.1f, r.getY() + dip, xM, r.getY() + dip);
-            p.cubicTo(xM + (bX2 - bX1) * 0.1f, r.getY() + dip, xM + (bX2 - bX1) * 0.2f, r.getY(), bX2, r.getY());
+
+            if (i == 0) { // Low Shelf Visual
+                p.startNewSubPath(bX1, r.getY() + dip);
+                p.lineTo(xM, r.getY() + dip);
+                p.cubicTo(bX2 - (bX2 - bX1) * 0.2f, r.getY() + dip, bX2 - (bX2 - bX1) * 0.1f, r.getY(), bX2, r.getY());
+            } 
+            else if (i == 1) { // Mid Bell
+                p.cubicTo(xM - (bX2 - bX1) * 0.2f, r.getY(), xM - (bX2 - bX1) * 0.1f, r.getY() + dip, xM, r.getY() + dip);
+                p.cubicTo(xM + (bX2 - bX1) * 0.1f, r.getY() + dip, xM + (bX2 - bX1) * 0.2f, r.getY(), bX2, r.getY());
+            }
+            else { // High Shelf Visual
+                p.cubicTo(bX1 + (bX2 - bX1) * 0.1f, r.getY(), bX1 + (bX2 - bX1) * 0.2f, r.getY() + dip, xM, r.getY() + dip);
+                p.lineTo(bX2, r.getY() + dip);
+            }
         }
-        g.setColour(juce::Colours::red.withAlpha(0.7f)); g.strokePath(p, juce::PathStrokeType(2.0f));
+        g.setColour(juce::Colours::red.withAlpha(0.7f)); g.strokePath(p, juce::PathStrokeType(2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     void drawPanel(juce::Graphics& g, juce::Rectangle<float> r, juce::String title) {
