@@ -13,7 +13,6 @@ void CompressorBand::prepare(const juce::dsp::ProcessSpec& spec) {
     compressor.prepare(spec);
     expander.prepare(spec);
     gain.prepare(spec);
-    scBuffer.setSize((int)spec.numChannels, (int)spec.maximumBlockSize);
 }
 
 void CompressorBand::updateParameters(const BandParameters& params) {
@@ -69,29 +68,25 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
 
     if (parameters.mode == Mode::Compress) {
         if (useSC) {
-            // SC compression logic (no-allocation version)
-            const int scChannels = juce::jmin((int)sidechainBuffer.getNumChannels(), (int)scBuffer.getNumChannels());
-            const int samplesToCopy = (int)block.getNumSamples();
+            // SC compression logic (simplificado)
+            juce::AudioBuffer<float> scCopy(sidechainBuffer.getNumChannels(), (int)block.getNumSamples());
+            for (int ch=0; ch<sidechainBuffer.getNumChannels(); ++ch)
+                scCopy.copyFrom(ch, 0, sidechainBuffer, ch, 0, (int)block.getNumSamples());
             
-            scBuffer.clear();
-            for (int ch = 0; ch < scChannels; ++ch)
-                scBuffer.copyFrom(ch, 0, sidechainBuffer, ch, 0, samplesToCopy);
-            
-            juce::dsp::AudioBlock<float> scBlock(scBuffer);
-            auto subScBlock = scBlock.getSubBlock(0, (size_t)samplesToCopy);
-            juce::dsp::ProcessContextReplacing<float> scContext(subScBlock);
+            juce::dsp::AudioBlock<float> scBlock(scCopy);
+            juce::dsp::ProcessContextReplacing<float> scContext(scBlock);
             compressor.process(scContext);
             
             float scAfter = 0.0f, scBefore = 0.0f;
-            for (size_t ch = 0; ch < subScBlock.getNumChannels(); ++ch) {
+            for (size_t ch = 0; ch < scBlock.getNumChannels(); ++ch) {
                 float sumA = 0.0f, sumB = 0.0f;
-                auto* ptrA = subScBlock.getChannelPointer(ch);
+                auto* ptrA = scBlock.getChannelPointer(ch);
                 auto* ptrB = sidechainBuffer.getReadPointer((int)ch);
-                for (size_t s = 0; s < subScBlock.getNumSamples(); ++s) {
+                for (size_t s = 0; s < scBlock.getNumSamples(); ++s) {
                     sumA += ptrA[s] * ptrA[s]; sumB += ptrB[s] * ptrB[s];
                 }
-                scAfter += std::sqrt(sumA / (float)subScBlock.getNumSamples());
-                scBefore += std::sqrt(sumB / (float)subScBlock.getNumSamples());
+                scAfter += std::sqrt(sumA / (float)scBlock.getNumSamples());
+                scBefore += std::sqrt(sumB / (float)scBlock.getNumSamples());
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
             block.multiplyBy(juce::jlimit(0.0f, 1.0f, gr));
@@ -100,29 +95,24 @@ void CompressorBand::process(juce::dsp::ProcessContextReplacing<float>& context,
         }
     } else { // Expand
         if (useSC) {
-            // SC expansion (no-allocation)
-            const int scChannels = juce::jmin((int)sidechainBuffer.getNumChannels(), (int)scBuffer.getNumChannels());
-            const int samplesToCopy = (int)block.getNumSamples();
-            
-            scBuffer.clear();
-            for (int ch = 0; ch < scChannels; ++ch)
-                scBuffer.copyFrom(ch, 0, sidechainBuffer, ch, 0, samplesToCopy);
-                
-            juce::dsp::AudioBlock<float> scBlock(scBuffer);
-            auto subScBlock = scBlock.getSubBlock(0, (size_t)samplesToCopy);
-            juce::dsp::ProcessContextReplacing<float> scContext(subScBlock);
+            // SC expansion
+            juce::AudioBuffer<float> scCopy(sidechainBuffer.getNumChannels(), (int)block.getNumSamples());
+            for (int ch=0; ch<sidechainBuffer.getNumChannels(); ++ch)
+                scCopy.copyFrom(ch, 0, sidechainBuffer, ch, 0, (int)block.getNumSamples());
+            juce::dsp::AudioBlock<float> scBlock(scCopy);
+            juce::dsp::ProcessContextReplacing<float> scContext(scBlock);
             expander.process(scContext);
             
             float scAfter = 0.0f, scBefore = 0.0f;
-            for (size_t ch = 0; ch < subScBlock.getNumChannels(); ++ch) {
+            for (size_t ch = 0; ch < scBlock.getNumChannels(); ++ch) {
                 float sumA = 0.0f, sumB = 0.0f;
-                auto* ptrA = subScBlock.getChannelPointer(ch);
+                auto* ptrA = scBlock.getChannelPointer(ch);
                 auto* ptrB = sidechainBuffer.getReadPointer((int)ch);
-                for (size_t s = 0; s < subScBlock.getNumSamples(); ++s) {
+                for (size_t s = 0; s < scBlock.getNumSamples(); ++s) {
                     sumA += ptrA[s] * ptrA[s]; sumB += ptrB[s] * ptrB[s];
                 }
-                scAfter += std::sqrt(sumA / (float)subScBlock.getNumSamples());
-                scBefore += std::sqrt(sumB / (float)subScBlock.getNumSamples());
+                scAfter += std::sqrt(sumA / (float)scBlock.getNumSamples());
+                scBefore += std::sqrt(sumB / (float)scBlock.getNumSamples());
             }
             float gr = (scBefore > 0.0001f) ? (scAfter / scBefore) : 1.0f;
             block.multiplyBy(juce::jlimit(1.0f, 10.0f, gr));
