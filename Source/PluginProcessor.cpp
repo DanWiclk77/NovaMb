@@ -288,16 +288,16 @@ public:
                 
                 juce::Rectangle<float> grBar = bandRects[i].withHeight(grHeight);
                 
-                juce::Colour grColor = juce::Colours::red.withAlpha(0.5f);
+                juce::Colour grColor = juce::Colours::red.withAlpha(0.6f);
                 g.setColour(grColor);
                 g.fillRect(grBar);
                 
-                juce::ColourGradient grad(grColor.withAlpha(0.8f), 0, grBar.getY(),
+                juce::ColourGradient grad(grColor.withAlpha(0.9f), 0, grBar.getY(),
                                          juce::Colours::transparentBlack, 0, grBar.getBottom(), false);
                 g.setGradientFill(grad);
                 g.fillRect(grBar);
 
-                g.setFont(juce::Font("Inter", 12.0f, juce::Font::bold));
+                g.setFont(juce::Font("Inter", 11.5f, juce::Font::bold));
                 g.setColour(juce::Colours::white);
                 float textY = analyzerDisplay.getY() + grHeight + 4;
                 if (textY > analyzerDisplay.getBottom() - 25) textY = analyzerDisplay.getBottom() - 25;
@@ -580,44 +580,44 @@ void NovaMBAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void NovaMBAudioProcessor::releaseResources() {}
 
-    void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
-        float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
-        float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
+void NovaMBAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+    float cross1 = apvts.getRawParameterValue("cross_low_mid")->load();
+    float cross2 = apvts.getRawParameterValue("cross_mid_high")->load();
 
-        for (int i = 0; i < 3; ++i) {
-            NovaMB::BandParameters b;
-            b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
-            b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
-            b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
-            b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
-            b.makeUpGain = apvts.getRawParameterValue(getParamID(i, "makeup").getParamID())->load();
-            b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
-            b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
-            b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
-            b.active = true; // Always active since button was removed
-            
-            int modeIdx = (int)apvts.getRawParameterValue(getParamID(i, "mode").getParamID())->load();
-            b.mode = (modeIdx == 1) ? NovaMB::Mode::Expand : NovaMB::Mode::Compress;
+    for (int i = 0; i < 3; ++i) {
+        NovaMB::BandParameters b;
+        b.threshold = apvts.getRawParameterValue(getParamID(i, "threshold").getParamID())->load();
+        b.ratio = apvts.getRawParameterValue(getParamID(i, "ratio").getParamID())->load();
+        b.attack = apvts.getRawParameterValue(getParamID(i, "attack").getParamID())->load();
+        b.release = apvts.getRawParameterValue(getParamID(i, "release").getParamID())->load();
+        b.makeUpGain = apvts.getRawParameterValue(getParamID(i, "makeup").getParamID())->load();
+        b.knee = apvts.getRawParameterValue(getParamID(i, "knee").getParamID())->load();
+        b.solo = apvts.getRawParameterValue(getParamID(i, "solo").getParamID())->load() > 0.5f;
+        b.mute = apvts.getRawParameterValue(getParamID(i, "mute").getParamID())->load() > 0.5f;
+        b.active = true; // Always active since button was removed
+        
+        int modeIdx = (int)apvts.getRawParameterValue(getParamID(i, "mode").getParamID())->load();
+        b.mode = (modeIdx == 1) ? NovaMB::Mode::Expand : NovaMB::Mode::Compress;
 
-            int scIdx = (int)apvts.getRawParameterValue(getParamID(i, "sc-source").getParamID())->load();
-            b.sidechainSource = (scIdx == 1) ? NovaMB::SidechainSource::External : NovaMB::SidechainSource::Internal;
+        int scIdx = (int)apvts.getRawParameterValue(getParamID(i, "sc-source").getParamID())->load();
+        b.sidechainSource = (scIdx == 1) ? NovaMB::SidechainSource::External : NovaMB::SidechainSource::Internal;
 
-            if (i == 0) { b.frequencyLow = 20.0f; b.frequencyHigh = cross1; }
-            else if (i == 1) { b.frequencyLow = cross1; b.frequencyHigh = cross2; }
-            else { b.frequencyLow = cross2; b.frequencyHigh = 20000.0f; }
+        if (i == 0) { b.frequencyLow = 20.0f; b.frequencyHigh = cross1; }
+        else if (i == 1) { b.frequencyLow = cross1; b.frequencyHigh = cross2; }
+        else { b.frequencyLow = cross2; b.frequencyHigh = 20000.0f; }
 
-            engine.updateBand(i, b);
-        }
-
-        auto sidechainBus = getBus(true, 1);
-        if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
-            auto scBuffer = getBusBuffer(buffer, true, 1);
-            engine.process(buffer, scBuffer);
-        } else {
-            juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
-            engine.process(buffer, emptySC);
-        }
+        engine.updateBand(i, b);
     }
+
+    auto sidechainBus = getBus(true, 1);
+    if (sidechainBus != nullptr && sidechainBus->isEnabled()) {
+        auto scBuffer = getBusBuffer(buffer, true, 1);
+        engine.process(buffer, scBuffer);
+    } else {
+        juce::AudioBuffer<float> emptySC(0, buffer.getNumSamples());
+        engine.process(buffer, emptySC);
+    }
+}
 
 juce::AudioProcessorEditor* NovaMBAudioProcessor::createEditor() {
     return new NovaMBEditor(*this, engine);
